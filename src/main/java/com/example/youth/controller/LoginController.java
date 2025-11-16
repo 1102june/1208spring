@@ -33,9 +33,6 @@ public class LoginController {
             } else {
                 return "사용자 정보 없음";
             }
-        } catch (FirebaseAuthException e) {
-            // Firebase 인증 실패 시 처리
-            return "ID Token 검증 실패: " + e.getMessage();
         } catch (Exception e) {
             // 그 외의 예외 처리
             return "로그인 처리 중 오류 발생: " + e.getMessage();
