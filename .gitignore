@@ -35,3 +35,12 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Firebase ###
+**/firebase-admin.json
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+
+

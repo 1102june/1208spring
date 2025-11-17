@@ -43,6 +43,9 @@ dependencies {
 
     // protobuf-java 의존성 업그레이드
     implementation 'com.google.protobuf:protobuf-java:3.21.10'  // 최신 버전으로 업그레이드
+
+    // 공공데이터 API 호출을 위한 WebClient (Spring WebFlux)
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
 }
 
 

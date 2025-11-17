@@ -21,10 +21,12 @@ public class User {
 
     @Enumerated(EnumType.STRING)
     @Column(length = 10)
+    @Builder.Default
     private LoginType loginType = LoginType.local;
 
     @Enumerated(EnumType.STRING)
     @Column(length = 10)
+    @Builder.Default
     private OSType osType = OSType.android;
 
     @Column(length = 10)
@@ -37,6 +39,7 @@ public class User {
     private String deviceId;
 
     @Column(nullable = false)
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL)
@@ -58,5 +61,3 @@ public class User {
     private List<AIRecommendation> aiRecommendations;
 }
 
-enum LoginType { local, google, passkey }
-enum OSType { android, ios, web }

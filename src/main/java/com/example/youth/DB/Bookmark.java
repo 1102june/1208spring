@@ -3,7 +3,6 @@ package com.example.youth.DB;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
-import com.example.youth.DB.User;
 import com.example.youth.common.ContentType;
 
 
@@ -25,10 +24,9 @@ public class Bookmark {
     private String contentId;
 
     @Enumerated(EnumType.STRING)
+    @Builder.Default
     private ActiveStatus isActive = ActiveStatus.Y;
 
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 }
-
-
-enum ActiveStatus { Y, N }

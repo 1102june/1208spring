@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import com.example.youth.DB.User;
 
 @Entity
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
@@ -23,6 +22,7 @@ public class CalendarEvent {
     private EventType eventType;
 
     private LocalDate endDate;
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 }
 
