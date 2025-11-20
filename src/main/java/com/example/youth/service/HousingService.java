@@ -1,11 +1,11 @@
 package com.example.youth.service;
 
-import com.example.youth.db.Housing;
+import com.example.youth.DB.Housing;
 import com.example.youth.dto.HousingResponse;
 import com.example.youth.repository.BookmarkRepository;
 import com.example.youth.repository.HousingRepository;
 import com.example.youth.common.ContentType;
-import com.example.youth.db.ActiveStatus;
+import com.example.youth.DB.ActiveStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 

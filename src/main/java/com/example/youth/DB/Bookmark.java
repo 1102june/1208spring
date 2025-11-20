@@ -29,6 +29,3 @@ public class Bookmark {
 
     private LocalDateTime createdAt = LocalDateTime.now();
 }
-
-
-enum ActiveStatus { Y, N }

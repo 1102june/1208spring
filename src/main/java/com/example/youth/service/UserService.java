@@ -1,6 +1,6 @@
 package com.example.youth.service;
 
-import com.example.youth.db.User;
+import com.example.youth.DB.User;
 import com.example.youth.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

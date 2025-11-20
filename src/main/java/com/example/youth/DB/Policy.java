@@ -1,4 +1,4 @@
-package com.example.youth.db;
+package com.example.youth.DB;
 
 import jakarta.persistence.*;
 import lombok.*;

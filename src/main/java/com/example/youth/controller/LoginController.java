@@ -3,7 +3,7 @@ package com.example.youth.controller;
 import com.example.youth.service.FirebaseAuthService;
 import com.example.youth.service.UserService;
 import com.example.youth.dto.LoginRequest;
-import com.example.youth.db.User;
+import com.example.youth.DB.User;
 import com.google.firebase.auth.FirebaseToken;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

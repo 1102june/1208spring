@@ -1,6 +1,6 @@
 package com.example.youth.controller;
 
-import com.example.youth.db.User;
+import com.example.youth.DB.User;
 import com.example.youth.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
