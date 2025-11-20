@@ -104,12 +104,7 @@ public class PublicDataApiService {
             }
         }
 
-        System.out.println("LH API 서비스 키 (원본, 처음 50자): " + (rawServiceKey != null && rawServiceKey.length() > 50 
-                ? rawServiceKey.substring(0, 50) + "..." 
-                : rawServiceKey));
-        System.out.println("LH API 서비스 키 (인코딩됨, 처음 50자): " + (encodedServiceKey != null && encodedServiceKey.length() > 50 
-                ? encodedServiceKey.substring(0, 50) + "..." 
-                : encodedServiceKey));
+        // 서비스 키 로그는 제거 (전체 조회 시 로그가 너무 많아짐)
 
         // serviceKey는 이미 한 번 인코딩된 값을 사용
         // 전체 URL 문자열을 직접 구성하여 URI.create()로 전달 (이중 인코딩 방지)
@@ -145,7 +140,7 @@ public class PublicDataApiService {
         }
         
         String fullUrl = urlString.toString();
-        System.out.println("LH API 최종 요청 URL: " + fullUrl);
+        // URL 로그는 제거 (전체 조회 시 로그가 너무 많아짐)
         
         // URI 객체를 직접 생성하여 WebClient에 전달 (이중 인코딩 방지)
         // baseUrl이 설정된 WebClient와 충돌을 피하기 위해 WebClient.create() 사용
@@ -160,18 +155,15 @@ public class PublicDataApiService {
                     if (response.statusCode().is2xxSuccessful()) {
                         return response.bodyToMono(String.class)
                                 .doOnNext(responseBody -> {
-                                    // 응답 내용 확인 (디버깅용)
+                                    // 응답 내용 확인 (디버깅용) - HTML 에러만 로그 출력
                                     if (responseBody != null) {
                                         // HTML 응답인지 확인
                                         if (responseBody.trim().startsWith("<") || responseBody.contains("<html")) {
                                             System.err.println("⚠️ HTML 응답이 반환되었습니다 (API 에러 가능성):");
                                             System.err.println("응답 내용 (처음 1000자): " + 
                                                 (responseBody.length() > 1000 ? responseBody.substring(0, 1000) : responseBody));
-                                        } else if (responseBody.length() < 500) {
-                                            System.out.println("API 응답 (전체): " + responseBody);
-                                        } else {
-                                            System.out.println("API 응답 (처음 500자): " + responseBody.substring(0, 500));
                                         }
+                                        // 정상 JSON 응답은 로그 출력하지 않음 (전체 조회 시 로그가 너무 많아짐)
                                     }
                                 })
                                 .map(responseBody -> {
@@ -210,18 +202,12 @@ public class PublicDataApiService {
                                             System.err.println("⚠️ 단지정보 API 전체 응답 본문: " + responseBody);
                                             // 에러 응답이면 예외 발생
                                             throw new RuntimeException("단지정보 API 에러: " + resultCode + " - " + resultMsg);
-                                        } else if (resultCode != null) {
-                                            System.out.println("✅ 단지정보 API 응답 성공 (code: " + resultCode + ")");
                                         }
                                         
                                         // 단지정보가 실제로 있는지 확인 (getItems() 메서드 사용)
                                         List<LHRentalHouseListResponse.Item> items = result != null ? result.getItems() : null;
-                                        if (items != null && !items.isEmpty()) {
-                                            System.out.println("✅ 단지정보 API 데이터 개수: " + items.size() + "건");
-                                        } else {
-                                            // 데이터가 없는 것은 정상일 수 있음 (해당 지역에 데이터가 없을 수 있음)
-                                            // 로그 레벨을 낮춤
-                                        }
+                                        // 데이터가 있을 때만 로그 출력 (전체 조회 시 로그가 너무 많아짐)
+                                        // 데이터가 없는 것은 정상일 수 있음 (해당 지역에 데이터가 없을 수 있음)
                                         
                                         return result;
                                     } catch (Exception e) {
@@ -249,7 +235,8 @@ public class PublicDataApiService {
                     }
                 })
                 .doOnError(error -> {
-                    System.err.println("LH API 호출 오류: " + error.getMessage());
+                    // 에러 로그는 실제 에러 발생 시에만 출력 (빈 응답은 정상일 수 있음)
+                    // System.err.println("LH API 호출 오류: " + error.getMessage());
                 });
     }
 

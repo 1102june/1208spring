@@ -133,6 +133,9 @@ public class RegionCodeMappingService {
             int processedRows = 0;
             int skippedRows = 0;
             
+            // 이전 행의 광역시도 코드를 유지 (시군구 행에서 Cell[3]이 비어있을 수 있음)
+            String lastBrtcCode = null;
+            
             for (int i = startRow; i <= sheet.getLastRowNum(); i++) {
                 Row row = sheet.getRow(i);
                 if (row == null) {
@@ -144,17 +147,17 @@ public class RegionCodeMappingService {
                 // Cell[0]: null (비어있음)
                 // Cell[1]: 법정동코드 (10자리 숫자, 예: "1100000000")
                 // Cell[2]: 법정동명 (예: "서울특별시", "서울특별시 종로구")
-                // Cell[3]: 광역시도코드 (2자리 숫자, 예: "11")
+                // Cell[3]: 광역시도코드 (2자리 숫자, 예: "11" 또는 null - 시군구 행에서는 비어있을 수 있음)
                 // Cell[4]: 시군구코드 (3자리 숫자, 예: "110" 또는 null)
                 
                 Cell cell0 = row.getCell(0); // null (비어있음)
                 Cell cell1 = row.getCell(1); // 법정동코드 (10자리 숫자, 예: "1100000000")
                 Cell cell2 = row.getCell(2); // 법정동명 (예: "서울특별시", "서울특별시 종로구")
-                Cell cell3 = row.getCell(3); // 광역시도코드 (예: "11")
+                Cell cell3 = row.getCell(3); // 광역시도코드 (예: "11" 또는 null)
                 Cell cell4 = row.getCell(4); // 시군구코드 (예: "110" 또는 null)
                 
-                // 법정동명(Cell[2])과 광역시도코드(Cell[3])는 필수
-                if (cell2 == null || cell3 == null) {
+                // 법정동명(Cell[2])은 필수
+                if (cell2 == null) {
                     skippedRows++;
                     continue;
                 }
@@ -162,17 +165,32 @@ public class RegionCodeMappingService {
                 String cell0Value = cell0 != null ? getCellValueAsString(cell0) : null; // null
                 String cell1Value = cell1 != null ? getCellValueAsString(cell1) : null; // 법정동코드
                 String regionName = getCellValueAsString(cell2); // 법정동명
-                String brtcCode = getCellValueAsString(cell3); // 광역시도코드
+                String brtcCode = cell3 != null ? getCellValueAsString(cell3) : null; // 광역시도코드
                 String signguCode = cell4 != null ? getCellValueAsString(cell4) : null; // 시군구코드
+                
+                // 광역시도 코드가 비어있으면 이전 행의 코드 사용 (시군구 행의 경우)
+                if (brtcCode == null || brtcCode.isEmpty()) {
+                    brtcCode = lastBrtcCode;
+                } else {
+                    // 새로운 광역시도 코드가 있으면 업데이트
+                    lastBrtcCode = brtcCode;
+                }
                 
                 // 디버깅: 처음 몇 개 행만 상세 로그 출력
                 if (i <= 3) {
                     System.out.println("행 #" + i + " 디버깅: Cell[0]='" + cell0Value + "', Cell[1]='" + cell1Value + 
-                                     "', Cell[2]='" + regionName + "', Cell[3]='" + brtcCode + "', Cell[4]='" + signguCode + "'");
+                                     "', Cell[2]='" + regionName + "', Cell[3]='" + (cell3 != null ? getCellValueAsString(cell3) : "null") + 
+                                     "', Cell[4]='" + signguCode + "' -> 사용할 brtcCode='" + brtcCode + "'");
                 }
                 
-                // 법정동명과 광역시도코드는 필수, 시군구코드는 옵션
-                if (regionName == null || brtcCode == null) {
+                // 법정동명은 필수, 광역시도코드는 이전 행에서 가져올 수 있음
+                if (regionName == null || regionName.isEmpty()) {
+                    skippedRows++;
+                    continue;
+                }
+                
+                // 광역시도 코드가 여전히 없으면 건너뛰기 (첫 번째 행이 시군구인 경우)
+                if (brtcCode == null || brtcCode.isEmpty()) {
                     skippedRows++;
                     continue;
                 }
@@ -219,28 +237,42 @@ public class RegionCodeMappingService {
                         regionNameToBrtcCode.put(brtcName, brtcCode);
                     }
                     
-                    // 시군구 정보가 있는 경우 (parts.length >= 2) 그리고 시군구 코드가 있는 경우
-                    if (parts.length >= 2 && signguCode != null && !signguCode.isEmpty()) {
-                        // "서울특별시 종로구" -> "종로구"
-                        // "경기도 수원시" -> "수원시"
-                        // "경기도 수원시 장안구" -> "수원시 장안구" (시 + 구)
-                        StringBuilder signguNameBuilder = new StringBuilder();
-                        for (int j = 1; j < parts.length; j++) {
-                            if (signguNameBuilder.length() > 0) {
-                                signguNameBuilder.append(" ");
+                    // 시군구 정보가 있는 경우 처리
+                    // 1. 법정동명에 시군구가 포함된 경우 (parts.length >= 2)
+                    // 2. 또는 Cell[4]에 시군구 코드가 있는 경우 (법정동명에 시군구가 없어도 시군구 코드가 있으면 처리)
+                    if (signguCode != null && !signguCode.isEmpty()) {
+                        String signguName = null;
+                        
+                        // 법정동명에서 시군구명 추출 (parts.length >= 2인 경우)
+                        if (parts.length >= 2) {
+                            // "서울특별시 종로구" -> "종로구"
+                            // "경기도 수원시" -> "수원시"
+                            // "경기도 수원시 장안구" -> "수원시 장안구" (시 + 구)
+                            StringBuilder signguNameBuilder = new StringBuilder();
+                            for (int j = 1; j < parts.length; j++) {
+                                if (signguNameBuilder.length() > 0) {
+                                    signguNameBuilder.append(" ");
+                                }
+                                signguNameBuilder.append(parts[j]);
                             }
-                            signguNameBuilder.append(parts[j]);
+                            signguName = signguNameBuilder.toString();
+                        } else {
+                            // 법정동명에 시군구가 없지만 시군구 코드가 있는 경우
+                            // 법정동코드(Cell[1])에서 시군구명 추출 시도
+                            // 또는 법정동명 전체를 시군구명으로 사용
+                            signguName = regionName; // 일단 전체를 시군구명으로 사용
                         }
-                        String signguName = signguNameBuilder.toString();
                         
-                        // 광역시도명 + 시군구명 -> 시군구 코드 매핑
-                        String key = brtcName + " " + signguName;
-                        regionNameToSignguCode.put(key, signguCode);
-                        
-                        // 광역시도 코드별 시군구 코드 목록 저장
-                        // 시군구명은 "수원시" 또는 "수원시 장안구" 형식으로 저장
-                        brtcCodeToSignguCodes.computeIfAbsent(brtcCode, k -> new HashMap<>())
-                                .put(signguName, signguCode);
+                        if (signguName != null && !signguName.isEmpty()) {
+                            // 광역시도명 + 시군구명 -> 시군구 코드 매핑
+                            String key = brtcName + " " + signguName;
+                            regionNameToSignguCode.put(key, signguCode);
+                            
+                            // 광역시도 코드별 시군구 코드 목록 저장
+                            // 시군구명은 "수원시" 또는 "수원시 장안구" 형식으로 저장
+                            brtcCodeToSignguCodes.computeIfAbsent(brtcCode, k -> new HashMap<>())
+                                    .put(signguName, signguCode);
+                        }
                     }
                     
                     processedRows++;
@@ -399,15 +431,24 @@ public class RegionCodeMappingService {
             initializeMapping();
         }
         
-        // "전국", "외" 같은 특수 케이스 처리
+        // "전국", "외" 같은 특수 케이스 처리 (경고 로그 없이 조용히 처리)
         String cleanCnpCdNm = cnpCdNm.trim();
-        if (cleanCnpCdNm.contains("전국") || cleanCnpCdNm.endsWith(" 외")) {
-            return null; // 전국은 특별 처리 필요
+        if (cleanCnpCdNm.contains("전국") || cleanCnpCdNm.equals("외")) {
+            return null; // 전국은 특별 처리 필요, 경고 로그 없이 조용히 반환
         }
         
         // "외" 제거 (예: "대구광역시 외" -> "대구광역시")
         if (cleanCnpCdNm.endsWith(" 외")) {
             cleanCnpCdNm = cleanCnpCdNm.substring(0, cleanCnpCdNm.length() - 2).trim();
+        }
+        
+        // "전북특별자치도" -> "전라북도" 변환
+        if (cleanCnpCdNm.equals("전북특별자치도")) {
+            cleanCnpCdNm = "전라북도";
+        }
+        // "전남특별자치도" -> "전라남도" 변환 (혹시 모를 경우 대비)
+        if (cleanCnpCdNm.equals("전남특별자치도")) {
+            cleanCnpCdNm = "전라남도";
         }
         
         // 1. 정확한 매칭 시도
@@ -461,16 +502,8 @@ public class RegionCodeMappingService {
             }
         }
         
-        // 디버깅: 매핑에 없는 지역명 출력 (첫 번째만 상세 출력)
-        if (regionNameToBrtcCode.size() > 0) {
-            // 첫 번째 매칭 실패만 상세 로그 출력
-            if (!regionNameToBrtcCode.containsKey("_first_fail_logged")) {
-                System.out.println("⚠️ 매핑에 없는 지역명: '" + cnpCdNm + "' (정리 후: '" + cleanCnpCdNm + "')");
-                System.out.println("   현재 매핑 키 목록: " + regionNameToBrtcCode.keySet());
-                regionNameToBrtcCode.put("_first_fail_logged", ""); // 플래그
-            }
-        }
-        
+        // 매핑에 없는 지역명은 조용히 null 반환 (경고 로그 제거)
+        // 특수 케이스("전국", "외" 등)는 이미 위에서 처리되었으므로 여기서는 조용히 반환
         return null;
     }
 }
