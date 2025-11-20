@@ -1,11 +1,8 @@
-package com.example.youth.DB;
+package com.example.youth.db;
 
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
-import com.example.youth.DB.User;
-import com.example.youth.DB.Policy;
-import com.example.youth.DB.Housing;
 
 @Entity
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder

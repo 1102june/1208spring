@@ -1,9 +1,11 @@
-package com.example.youth.DB;
+package com.example.youth.db;
 
 import jakarta.persistence.*;
 import lombok.*;
+
 import java.time.LocalDateTime;
 import java.util.List;
+
 
 @Entity
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
@@ -16,7 +18,7 @@ public class User {
     @Column(nullable = false, unique = true, length = 100)
     private String email;
 
-    @Column(nullable = false, length = 255)
+    @Column(nullable = true, length = 255)
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)
@@ -58,5 +60,3 @@ public class User {
     private List<AIRecommendation> aiRecommendations;
 }
 
-enum LoginType { local, google, passkey }
-enum OSType { android, ios, web }

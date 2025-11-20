@@ -1,29 +1,26 @@
-package com.example.youth.DB;
+package com.example.youth.db;
 
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import com.example.youth.DB.User;
+
+import com.example.youth.common.ContentType;
+
 
 @Entity
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class CalendarEvent {
+public class AIRecommendation {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long eventId;
+    private Long recId;
 
     @ManyToOne
     @JoinColumn(name = "user_id")
     private User user;
 
-    private String title;
-
     @Enumerated(EnumType.STRING)
-    private EventType eventType;
+    private ContentType contentType;
 
-    private LocalDate endDate;
+    private String contentId;
     private LocalDateTime createdAt = LocalDateTime.now();
 }
-
-enum EventType { policy, housing }
