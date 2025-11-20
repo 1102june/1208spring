@@ -1,6 +1,7 @@
 package com.example.youth.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -13,7 +14,9 @@ import java.util.TimerTask;
 @RequiredArgsConstructor
 public class OtpService {
 
-    private final EmailService emailService;
+    // EmailService가 없어도 동작하도록 선택적 주입
+    @Autowired(required = false)
+    private EmailService emailService;
 
     // 임시 저장소 (Redis로 전환 예정)
     private final Map<String, String> otpStore = new HashMap<>();
@@ -32,7 +35,12 @@ public class OtpService {
             }
         }, 5 * 60 * 1000);
 
-        emailService.sendOtp(email, otp);
+        // EmailService가 있으면 이메일 발송, 없으면 로그만 출력
+        if (emailService != null) {
+            emailService.sendOtp(email, otp);
+        } else {
+            System.out.println("⚠️ EmailService가 설정되지 않았습니다. OTP: " + otp + " (이메일: " + email + ")");
+        }
     }
 
     /** OTP 검증 */

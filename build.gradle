@@ -50,6 +50,9 @@ dependencies {
     // Excel 파일 읽기를 위한 Apache POI
     implementation 'org.apache.poi:poi:5.2.5'
     implementation 'org.apache.poi:poi-ooxml:5.2.5'
+    
+    // Spring Mail 의존성
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
 }
 
 
