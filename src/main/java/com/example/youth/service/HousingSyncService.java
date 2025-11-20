@@ -34,9 +34,11 @@ public class HousingSyncService {
 
     /**
      * LH 공공데이터에서 임대주택 정보를 가져와 DB에 동기화
-     * 1. 공고문 API로 공고 데이터 조회 및 DB에 저장
-     * 2. DB에 저장된 공고문 데이터를 기준으로 단지정보 API 조회
-     * 3. 단지정보 API 데이터로 DB housing 테이블의 나머지 필드 업데이트
+     * 1. 공고문 API 전체 데이터 조회
+     * 2. 공고문 데이터에서 지역 정보 추출
+     * 3. 추출한 지역 정보로 단지정보 API 전체 데이터 조회
+     * 4. 두 API 데이터를 매칭하여 병합
+     * 5. DB에 저장 (공고문 + 단지정보 병합 데이터)
      * 
      * @param brtcCode 광역시도 코드 (옵션, 공고문 API용)
      * @param signguCode 시군구 코드 (옵션, 공고문 API용)
@@ -46,10 +48,20 @@ public class HousingSyncService {
      */
     public void syncLHRentalHouseData(String brtcCode, String signguCode) {
         System.out.println("========================================");
-        System.out.println("임대주택 데이터 동기화 시작 (공고문 저장 → 단지정보 업데이트)");
+        System.out.println("임대주택 데이터 동기화 시작 (공고문 + 단지정보 전체 조회 → 병합 → 저장)");
         System.out.println("========================================");
         
-        // 1단계: 공고문 API 호출 및 DB에 저장
+        // 지역 코드 매핑 서비스 초기화
+        try {
+            System.out.println("지역 코드 매핑 서비스 초기화 시작...");
+            regionCodeMappingService.initializeMapping();
+            System.out.println("지역 코드 매핑 서비스 초기화 완료");
+        } catch (Exception e) {
+            System.err.println("⚠️ 지역 코드 매핑 서비스 초기화 실패: " + e.getMessage());
+            e.printStackTrace();
+        }
+        
+        // 1단계: 공고문 API 전체 데이터 조회
         publicDataApiService.getAllLHRentalNoticeList(brtcCode, signguCode)
                 .doOnError(error -> {
                     System.err.println("공고문 API 호출 실패: " + error.getMessage());
@@ -65,17 +77,7 @@ public class HousingSyncService {
                             }
                             
                             List<LHRentalNoticeResponse.Item> noticeItems = noticeResponse.getDsList();
-                            System.out.println("공고문 데이터 수집: " + noticeItems.size() + "건");
-                            
-                            // 지역 코드 매핑 서비스 초기화
-                            try {
-                                System.out.println("지역 코드 매핑 서비스 초기화 시작...");
-                                regionCodeMappingService.initializeMapping();
-                                System.out.println("지역 코드 매핑 서비스 초기화 완료");
-                            } catch (Exception e) {
-                                System.err.println("⚠️ 지역 코드 매핑 서비스 초기화 실패: " + e.getMessage());
-                                e.printStackTrace();
-                            }
+                            System.out.println("✅ 공고문 API 전체 데이터 수집: " + noticeItems.size() + "건");
                             
                             // 공고문 데이터를 Map으로 변환
                             Map<String, LHRentalNoticeResponse.Item> noticeMapByHsmpSn = new HashMap<>();
@@ -102,39 +104,27 @@ public class HousingSyncService {
                             System.out.println("  - hsmpSn 기준: " + noticeMapByHsmpSn.size() + "건");
                             System.out.println("  - hsmpNm 기준: " + noticeMapByHsmpNm.size() + "건");
                             
-                            // 공고문 데이터를 DB에 저장
-                            System.out.println("공고문 데이터를 DB에 저장 중...");
-                            saveNoticeDataOnly(noticeMapByHsmpSn, noticeMapByHsmpNm);
-                            
-                            // 2단계: DB에 저장된 housing 데이터를 읽어서 단지정보 API 조회
-                            System.out.println("DB에 저장된 housing 데이터 조회 중...");
-                            List<Housing> savedHousings = housingRepository.findAll();
-                            
-                            if (savedHousings.isEmpty()) {
-                                System.out.println("⚠️ DB에 저장된 housing 데이터가 없습니다.");
-                                return;
-                            }
-                            
-                            System.out.println("DB에 저장된 housing 데이터: " + savedHousings.size() + "건");
-                            
-                            // 저장된 housing 데이터에서 지역 정보 추출
-                            Map<String, Set<String>> brtcToSignguCodes = extractRegionsFromHousings(savedHousings);
+                            // 2단계: 공고문 데이터에서 지역 정보 추출
+                            Map<String, Set<String>> brtcToSignguCodes = extractRegionsFromNotices(noticeItems);
                             
                             if (brtcToSignguCodes.isEmpty()) {
-                                System.out.println("⚠️ 지역 정보를 추출할 수 없어 단지정보 조회를 건너뜁니다.");
+                                System.out.println("⚠️ 공고문에서 지역 정보를 추출할 수 없습니다.");
+                                // 공고문 데이터만 저장
+                                saveNoticeDataOnly(noticeMapByHsmpSn, noticeMapByHsmpNm);
                                 return;
                             }
                             
                             System.out.println("추출된 광역시도 코드: " + brtcToSignguCodes.size() + "개");
                             
-                            // 3단계: 단지정보 API 조회
-                            System.out.println("단지정보 API 조회 시작 (DB housing 데이터 기준)");
+                            // 3단계: 단지정보 API 전체 데이터 조회 (공고문에서 추출한 지역 정보 기반)
+                            System.out.println("단지정보 API 전체 데이터 조회 시작 (공고문 지역 정보 기반)");
                             List<LHRentalHouseListResponse.Item> allHouseItems = syncTargetRegions(brtcToSignguCodes);
                             
-                            System.out.println("수집된 단지정보: " + allHouseItems.size() + "건");
+                            System.out.println("✅ 단지정보 API 전체 데이터 수집: " + allHouseItems.size() + "건");
                             
-                            // 4단계: 단지정보 API 데이터로 DB housing 업데이트
-                            updateHousingsWithHouseInfo(savedHousings, allHouseItems);
+                            // 4단계: 두 API 데이터를 매칭하여 병합 후 DB에 저장
+                            System.out.println("공고문 + 단지정보 데이터 병합 및 저장 시작...");
+                            saveHousingDataWithNotices(allHouseItems, noticeMapByHsmpSn, noticeMapByHsmpNm);
                         },
                         error -> {
                             System.err.println("========================================");
@@ -480,6 +470,34 @@ public class HousingSyncService {
         } else {
             // 데이터가 없는 경우는 조용히 넘어감 (전체 조회 시 많은 조합이 데이터가 없을 수 있음)
         }
+    }
+
+    /**
+     * 공고문 데이터에서 지역 정보 추출
+     * @param noticeItems 공고문 API Item 리스트
+     * @return 광역시도 코드 -> 시군구 코드 Set 맵
+     */
+    private Map<String, Set<String>> extractRegionsFromNotices(List<LHRentalNoticeResponse.Item> noticeItems) {
+        Map<String, Set<String>> brtcToSignguCodes = new HashMap<>();
+        
+        for (LHRentalNoticeResponse.Item notice : noticeItems) {
+            // CNP_CD_NM (지역명) 추출 및 광역시도 코드로 변환
+            String cnpCdNm = notice.getCnpCdNm(); // 예: "충청북도", "서울특별시"
+            if (cnpCdNm != null && !cnpCdNm.isEmpty()) {
+                String mappedBrtcCode = regionCodeMappingService.convertCnpCdNmToBrtcCode(cnpCdNm);
+                if (mappedBrtcCode != null) {
+                    // 해당 광역시도에 속한 실제 시군구 코드 목록 가져오기
+                    Map<String, String> signguCodes = regionCodeMappingService.getSignguCodesByBrtcCode(mappedBrtcCode);
+                    if (!signguCodes.isEmpty()) {
+                        brtcToSignguCodes.putIfAbsent(mappedBrtcCode, new HashSet<>());
+                        brtcToSignguCodes.get(mappedBrtcCode).addAll(signguCodes.values());
+                    }
+                }
+                // 매핑 실패는 조용히 처리 (특수 케이스: "전국", "외" 등은 정상)
+            }
+        }
+        
+        return brtcToSignguCodes;
     }
 
     /**
