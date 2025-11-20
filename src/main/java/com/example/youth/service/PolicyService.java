@@ -69,5 +69,13 @@ public class PolicyService {
                 .map(policy -> convertToResponse(policy, userId))
                 .collect(Collectors.toList());
     }
+
+    // 전체 정책 목록 조회 (테스트용)
+    public List<PolicyResponse> getAllPolicies(String userId) {
+        List<Policy> policies = policyRepository.findAll();
+        return policies.stream()
+                .map(policy -> convertToResponse(policy, userId))
+                .collect(Collectors.toList());
+    }
 }
 

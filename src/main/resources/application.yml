@@ -24,11 +24,24 @@ public-data:
     rental-house-list:
       url: https://data.myhome.go.kr:443/rentalHouseList
       service-key: ${LH_SERVICE_KEY:}  # 환경 변수에서 가져오기
-      encoding-key: ${LH_ENCODING_KEY:}  # 인코딩 키
-      decoding-key: ${LH_DECODING_KEY:}  # 디코딩 키
-  # 두 번째 API (추가 필요 시)
-  api2:
-    url: ${API2_URL:}
-    service-key: ${API2_SERVICE_KEY:}
-    encoding-key: ${API2_ENCODING_KEY:}
-    decoding-key: ${API2_DECODING_KEY:}
+      encoding-key: ${LH_ENCODING_KEY:lPzs%2BxT8j7c%2B%2FkeCPNXvMnNsIiQo5vkcZuCk7p%2F6g%2FV%2FpntFixwv2NHVJIg3fB7XtBfSpnaaNzFVbEPArspfNQ%3D%3D}  # 인코딩 키 (이미 URL 인코딩된 키)
+      decoding-key: ${LH_DECODING_KEY:lPzs+xT8j7c+/keCPNXvMnNsIiQo5vkcZuCk7p/6g/V/pntFixwv2NHVJIg3fB7XtBfSpnaaNzFVbEPArspfNQ==}  # 디코딩 키 (원본 키)
+    # 두 번째 API: 한국토지주택공사_분양임대공고문 조회 서비스
+    # 엔드포인트: https://apis.data.go.kr/B552555/lhLeaseNoticeInfo1
+    rental-notice:
+      url: ${LH_RENTAL_NOTICE_URL:https://apis.data.go.kr/B552555}
+      service-key: ${LH_RENTAL_NOTICE_SERVICE_KEY:}
+      encoding-key: ${LH_RENTAL_NOTICE_ENCODING_KEY:lPzs%2BxT8j7c%2B%2FkeCPNXvMnNsIiQo5vkcZuCk7p%2F6g%2FV%2FpntFixwv2NHVJIg3fB7XtBfSpnaaNzFVbEPArspfNQ%3D%3D}  # 인코딩 키 (이미 URL 인코딩된 키)
+      decoding-key: ${LH_RENTAL_NOTICE_DECODING_KEY:lPzs+xT8j7c+/keCPNXvMnNsIiQo5vkcZuCk7p/6g/V/pntFixwv2NHVJIg3fB7XtBfSpnaaNzFVbEPArspfNQ==}  # 디코딩 키 (원본 키)
+
+# 청년정책 API 설정
+youth-policy:
+  # 온통청년 청년정책 API
+  url: ${YOUTH_POLICY_API_URL:https://www.youthcenter.go.kr/go/ythip/getPlcy}
+  service-key: ${YOUTH_POLICY_SERVICE_KEY:346f78cb-6fd7-435e-af26-5a471734b3ac}  # API 인증키
+
+# 카카오맵 API 설정
+kakao:
+  map:
+    rest-api-key: ${KAKAO_REST_API_KEY:7b587003c2c00f816243e86c138e7fcb}  # REST API 키
+    base-url: https://dapi.kakao.com

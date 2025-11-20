@@ -9,6 +9,20 @@ import java.util.List;
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class LHRentalHouseListResponse {
+    // 실제 API 응답 형식: {"code":"000","hsmpList":[],"msg":"OK"}
+    // 또는 기존 형식: {"response":{"header":...,"body":...}}
+    
+    // 새로운 형식 지원
+    @JsonProperty("code")
+    private String code;
+    
+    @JsonProperty("msg")
+    private String msg;
+    
+    @JsonProperty("hsmpList")
+    private List<Item> hsmpList;
+    
+    // 기존 형식 지원 (하위 호환성)
     @JsonProperty("response")
     private Response response;
 
@@ -53,6 +67,23 @@ public class LHRentalHouseListResponse {
     public static class Items {
         @JsonProperty("item")
         private List<Item> item;
+    }
+    
+    /**
+     * 실제 데이터 리스트를 반환 (새 형식 또는 기존 형식 모두 지원)
+     */
+    public List<Item> getItems() {
+        // 새로운 형식: hsmpList 직접 사용
+        if (hsmpList != null) {
+            return hsmpList;
+        }
+        // 기존 형식: response.body.items.item 사용
+        if (response != null && response.getBody() != null 
+                && response.getBody().getItems() != null 
+                && response.getBody().getItems().getItem() != null) {
+            return response.getBody().getItems().getItem();
+        }
+        return null;
     }
 
     @Data
