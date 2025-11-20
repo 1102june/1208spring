@@ -36,6 +36,5 @@ public class HousingResponse {
     
     // 상세 정보
     private String housingType; // 주택유형
-    private Integer depositRefund; // 보증금환급금
 }
 

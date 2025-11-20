@@ -1,21 +1,27 @@
 package com.example.youth.service;
 
 import com.example.youth.dto.publicdata.LHRentalHouseListResponse;
+import com.example.youth.dto.publicdata.LHRentalNoticeResponse;
+import com.example.youth.dto.publicdata.YouthPolicyResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 
 @Service
 public class PublicDataApiService {
 
     private final WebClient lhWebClient;
+    private final WebClient lhRentalNoticeWebClient;
+    private final WebClient youthPolicyWebClient;
 
     @Value("${public-data.lh.rental-house-list.service-key}")
     private String serviceKey;
@@ -26,8 +32,31 @@ public class PublicDataApiService {
     @Value("${public-data.lh.rental-house-list.decoding-key:}")
     private String decodingKey;
 
-    public PublicDataApiService(@Qualifier("lhWebClient") WebClient lhWebClient) {
+    @Value("${public-data.lh.rental-notice.decoding-key:}")
+    private String rentalNoticeDecodingKey;
+
+    @Value("${public-data.lh.rental-notice.encoding-key:}")
+    private String rentalNoticeEncodingKey;
+
+    @Value("${public-data.lh.rental-house-list.url}")
+    private String lhRentalHouseListUrl;
+
+    @Value("${public-data.lh.rental-notice.url}")
+    private String lhRentalNoticeUrl; // Added for debugging
+
+    @Value("${youth-policy.service-key}")
+    private String youthPolicyServiceKey;
+
+    @Value("${youth-policy.url}")
+    private String youthPolicyUrl;
+
+    public PublicDataApiService(
+            @Qualifier("lhWebClient") WebClient lhWebClient,
+            @Qualifier("lhRentalNoticeWebClient") WebClient lhRentalNoticeWebClient,
+            @Qualifier("youthPolicyWebClient") WebClient youthPolicyWebClient) {
         this.lhWebClient = lhWebClient;
+        this.lhRentalNoticeWebClient = lhRentalNoticeWebClient;
+        this.youthPolicyWebClient = youthPolicyWebClient;
     }
 
     /**
@@ -46,45 +75,179 @@ public class PublicDataApiService {
             String signguCode,
             String hsmpSn) {
 
-        // 인코딩된 서비스 키 사용 (필요시)
-        String encodedServiceKey = encodingKey != null && !encodingKey.isEmpty() 
-                ? encodingKey 
-                : serviceKey;
-
-        Map<String, String> params = new HashMap<>();
-        params.put("serviceKey", encodedServiceKey);
-        params.put("pageNo", String.valueOf(pageNo != null ? pageNo : 1));
-        params.put("numOfRows", String.valueOf(numOfRows != null ? numOfRows : 10));
+        // 서비스 키 결정: data.myhome.go.kr API
+        // 반드시 디코딩 키를 URL 인코딩해서 사용해야 함
+        String rawServiceKey;
+        String encodedServiceKey;
         
-        if (brtcCode != null && !brtcCode.isEmpty()) {
-            params.put("brtcCode", brtcCode);
-        }
-        if (signguCode != null && !signguCode.isEmpty()) {
-            params.put("signguCode", signguCode);
-        }
-        if (hsmpSn != null && !hsmpSn.isEmpty()) {
-            params.put("hsmpSn", hsmpSn);
-        }
-
-        // 쿼리 파라미터 생성
-        StringBuilder queryString = new StringBuilder();
-        params.forEach((key, value) -> {
-            if (queryString.length() > 0) {
-                queryString.append("&");
-            }
+        // 1순위: 디코딩 키를 URL 인코딩
+        if (decodingKey != null && !decodingKey.isEmpty()) {
+            rawServiceKey = decodingKey;
             try {
-                queryString.append(key)
-                        .append("=")
-                        .append(URLEncoder.encode(value, StandardCharsets.UTF_8));
+                encodedServiceKey = URLEncoder.encode(decodingKey, StandardCharsets.UTF_8);
             } catch (Exception e) {
-                queryString.append(key).append("=").append(value);
+                encodedServiceKey = decodingKey;
             }
-        });
+        }
+        // 2순위: 인코딩 키 사용 (이미 URL 인코딩된 키)
+        else if (encodingKey != null && !encodingKey.isEmpty()) {
+            rawServiceKey = encodingKey;
+            encodedServiceKey = encodingKey;
+        }
+        // 3순위: service-key 사용
+        else {
+            rawServiceKey = serviceKey;
+            try {
+                encodedServiceKey = URLEncoder.encode(serviceKey, StandardCharsets.UTF_8);
+            } catch (Exception e) {
+                encodedServiceKey = serviceKey;
+            }
+        }
 
-        return lhWebClient.get()
-                .uri("?" + queryString.toString())
-                .retrieve()
-                .bodyToMono(LHRentalHouseListResponse.class)
+        System.out.println("LH API 서비스 키 (원본, 처음 50자): " + (rawServiceKey != null && rawServiceKey.length() > 50 
+                ? rawServiceKey.substring(0, 50) + "..." 
+                : rawServiceKey));
+        System.out.println("LH API 서비스 키 (인코딩됨, 처음 50자): " + (encodedServiceKey != null && encodedServiceKey.length() > 50 
+                ? encodedServiceKey.substring(0, 50) + "..." 
+                : encodedServiceKey));
+
+        // serviceKey는 이미 한 번 인코딩된 값을 사용
+        // 전체 URL 문자열을 직접 구성하여 URI.create()로 전달 (이중 인코딩 방지)
+        final String finalEncodedServiceKeyForUri = encodedServiceKey;
+        
+        // 전체 URL 문자열 구성 (이미 인코딩된 serviceKey를 그대로 사용)
+        // API 문서 참고: https://www.data.go.kr/data/15058476/openapi.do
+        // 필수 파라미터: serviceKey, brtcCode, signguCode
+        // 옵션 파라미터: pageNo (기본값:1), numOfRows (기본값:10)
+        // 요청주소: https://data.myhome.go.kr:443/rentalHouseList
+        
+        // brtcCode와 signguCode는 필수 파라미터
+        // 하지만 hsmpSn만으로도 조회가 가능할 수 있으므로, hsmpSn이 있으면 brtcCode와 signguCode는 기본값 사용
+        if ((brtcCode == null || brtcCode.isEmpty()) && (hsmpSn == null || hsmpSn.isEmpty())) {
+            throw new IllegalArgumentException("brtcCode (광역시도 코드)는 필수 파라미터입니다. (hsmpSn이 없을 경우)");
+        }
+        if ((signguCode == null || signguCode.isEmpty()) && (hsmpSn == null || hsmpSn.isEmpty())) {
+            throw new IllegalArgumentException("signguCode (시군구 코드)는 필수 파라미터입니다. (hsmpSn이 없을 경우)");
+        }
+        
+        // hsmpSn만 있고 brtcCode/signguCode가 없으면 기본값 사용 (00, 000)
+        String finalBrtcCode = (brtcCode != null && !brtcCode.isEmpty()) ? brtcCode : "00";
+        String finalSignguCode = (signguCode != null && !signguCode.isEmpty()) ? signguCode : "000";
+        
+        StringBuilder urlString = new StringBuilder(lhRentalHouseListUrl);
+        urlString.append("?serviceKey=").append(finalEncodedServiceKeyForUri) // 필수: 서비스키
+                 .append("&brtcCode=").append(URLEncoder.encode(finalBrtcCode, StandardCharsets.UTF_8)) // 필수: 광역시도 코드
+                 .append("&signguCode=").append(URLEncoder.encode(finalSignguCode, StandardCharsets.UTF_8)) // 필수: 시군구 코드
+                 .append("&pageNo=").append(pageNo != null ? pageNo : 1) // 옵션: 페이지 번호 (기본값:1)
+                 .append("&numOfRows=").append(numOfRows != null ? numOfRows : 10); // 옵션: 페이지당 데이터 개수 (기본값:10)
+        if (hsmpSn != null && !hsmpSn.isEmpty()) {
+            urlString.append("&hsmpSn=").append(URLEncoder.encode(hsmpSn, StandardCharsets.UTF_8));
+        }
+        
+        String fullUrl = urlString.toString();
+        System.out.println("LH API 최종 요청 URL: " + fullUrl);
+        
+        // URI 객체를 직접 생성하여 WebClient에 전달 (이중 인코딩 방지)
+        // baseUrl이 설정된 WebClient와 충돌을 피하기 위해 WebClient.create() 사용
+        URI uri = URI.create(fullUrl);
+        
+        return WebClient.create()
+                .get()
+                .uri(uri) // URI 객체를 직접 전달 (WebClient가 추가 인코딩하지 않음)
+                .accept(MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML)
+                .exchangeToMono(response -> {
+                    // HTTP 상태 코드 확인
+                    if (response.statusCode().is2xxSuccessful()) {
+                        return response.bodyToMono(String.class)
+                                .doOnNext(responseBody -> {
+                                    // 응답 내용 확인 (디버깅용)
+                                    if (responseBody != null) {
+                                        // HTML 응답인지 확인
+                                        if (responseBody.trim().startsWith("<") || responseBody.contains("<html")) {
+                                            System.err.println("⚠️ HTML 응답이 반환되었습니다 (API 에러 가능성):");
+                                            System.err.println("응답 내용 (처음 1000자): " + 
+                                                (responseBody.length() > 1000 ? responseBody.substring(0, 1000) : responseBody));
+                                        } else if (responseBody.length() < 500) {
+                                            System.out.println("API 응답 (전체): " + responseBody);
+                                        } else {
+                                            System.out.println("API 응답 (처음 500자): " + responseBody.substring(0, 500));
+                                        }
+                                    }
+                                })
+                                .map(responseBody -> {
+                                    // HTML 응답인 경우 에러 처리
+                                    if (responseBody != null && (responseBody.trim().startsWith("<") || responseBody.contains("<html"))) {
+                                        System.err.println("API가 HTML 에러 페이지를 반환했습니다.");
+                                        throw new RuntimeException("API가 HTML 에러 페이지를 반환했습니다. 응답: " + 
+                                            (responseBody.length() > 500 ? responseBody.substring(0, 500) : responseBody));
+                                    }
+                                    
+                                    // JSON 파싱 시도
+                                    try {
+                                        ObjectMapper objectMapper = new ObjectMapper();
+                                        LHRentalHouseListResponse result = objectMapper.readValue(responseBody, LHRentalHouseListResponse.class);
+                                        
+                                        // 응답 코드 확인 (새 형식: code, 기존 형식: response.header.resultCode)
+                                        String resultCode = null;
+                                        String resultMsg = null;
+                                        
+                                        // 새 형식 확인: {"code":"000","hsmpList":[],"msg":"OK"}
+                                        if (result != null && result.getCode() != null) {
+                                            resultCode = result.getCode();
+                                            resultMsg = result.getMsg();
+                                        }
+                                        // 기존 형식 확인: response.header
+                                        else if (result != null && result.getResponse() != null 
+                                                && result.getResponse().getHeader() != null) {
+                                            resultCode = result.getResponse().getHeader().getResultCode();
+                                            resultMsg = result.getResponse().getHeader().getResultMsg();
+                                        }
+                                        
+                                        // 에러 코드 체크
+                                        if (resultCode != null && !resultCode.equals("000") && !resultCode.equals("00")) {
+                                            System.err.println("⚠️ 단지정보 API 응답 에러 코드: " + resultCode);
+                                            System.err.println("⚠️ 단지정보 API 응답 에러 메시지: " + resultMsg);
+                                            System.err.println("⚠️ 단지정보 API 전체 응답 본문: " + responseBody);
+                                            // 에러 응답이면 예외 발생
+                                            throw new RuntimeException("단지정보 API 에러: " + resultCode + " - " + resultMsg);
+                                        } else if (resultCode != null) {
+                                            System.out.println("✅ 단지정보 API 응답 성공 (code: " + resultCode + ")");
+                                        }
+                                        
+                                        // 단지정보가 실제로 있는지 확인 (getItems() 메서드 사용)
+                                        List<LHRentalHouseListResponse.Item> items = result != null ? result.getItems() : null;
+                                        if (items != null && !items.isEmpty()) {
+                                            System.out.println("✅ 단지정보 API 데이터 개수: " + items.size() + "건");
+                                        } else {
+                                            // 데이터가 없는 것은 정상일 수 있음 (해당 지역에 데이터가 없을 수 있음)
+                                            // 로그 레벨을 낮춤
+                                        }
+                                        
+                                        return result;
+                                    } catch (Exception e) {
+                                        System.err.println("JSON 파싱 실패. 응답 내용: " + 
+                                            (responseBody != null && responseBody.length() > 1000 
+                                                ? responseBody.substring(0, 1000) 
+                                                : responseBody));
+                                        System.err.println("전체 응답 본문: " + responseBody);
+                                        throw new RuntimeException("API 응답 파싱 실패: " + e.getMessage(), e);
+                                    }
+                                });
+                    } else {
+                        // 에러 응답도 본문 읽기
+                        return response.bodyToMono(String.class)
+                                .doOnNext(errorBody -> {
+                                    System.err.println("LH API 에러 응답 (상태코드: " + response.statusCode() + "): " + 
+                                        (errorBody != null && errorBody.length() > 1000 
+                                            ? errorBody.substring(0, 1000) 
+                                            : errorBody));
+                                })
+                                .flatMap(errorBody -> {
+                                    return Mono.error(new RuntimeException("LH API 호출 실패: " + response.statusCode() + 
+                                        (errorBody != null ? " - " + errorBody : "")));
+                                });
+                    }
+                })
                 .doOnError(error -> {
                     System.err.println("LH API 호출 오류: " + error.getMessage());
                 });
@@ -97,6 +260,250 @@ public class PublicDataApiService {
             String brtcCode,
             String signguCode) {
         return getLHRentalHouseList(1, 1000, brtcCode, signguCode, null);
+    }
+
+
+    /**
+     * LH 분양임대공고문 조회
+     * API 문서: https://www.data.go.kr/data/15058530/openapi.do
+     * 필수 파라미터: ServiceKey, PG_SZ, PAGE, PAN_NT_ST_DT, CLSG_DT
+     * @param pageNo 페이지 번호 (기본값: 1) -> PAGE 파라미터로 변환
+     * @param numOfRows 페이지당 데이터 개수 (기본값: 10) -> PG_SZ 파라미터로 변환
+     * @param brtcCode 광역시도 코드 (옵션) -> CNP_CD 파라미터로 변환
+     * @param signguCode 시군구 코드 (옵션) - 이 API에서는 사용 안 함
+     * @param hsmpSn 단지 식별자 (옵션) - 이 API에서는 사용 안 함
+     * @return LH 분양임대공고문 응답
+     */
+    public Mono<LHRentalNoticeResponse> getLHRentalNoticeList(
+            Integer pageNo,
+            Integer numOfRows,
+            String brtcCode,
+            String signguCode,
+            String hsmpSn) {
+
+        // 서비스 키 결정 및 인코딩 (rental-notice용)
+        // 반드시 디코딩 키를 URL 인코딩해서 사용해야 함
+        String rawServiceKey;
+        String encodedServiceKey;
+        
+        // 1순위: 디코딩 키를 URL 인코딩
+        if (rentalNoticeDecodingKey != null && !rentalNoticeDecodingKey.isEmpty()) {
+            rawServiceKey = rentalNoticeDecodingKey;
+            try {
+                encodedServiceKey = URLEncoder.encode(rentalNoticeDecodingKey, StandardCharsets.UTF_8);
+            } catch (Exception e) {
+                encodedServiceKey = rentalNoticeDecodingKey;
+            }
+        }
+        // 2순위: 기본 디코딩 키를 URL 인코딩
+        else if (decodingKey != null && !decodingKey.isEmpty()) {
+            rawServiceKey = decodingKey;
+            try {
+                encodedServiceKey = URLEncoder.encode(decodingKey, StandardCharsets.UTF_8);
+            } catch (Exception e) {
+                encodedServiceKey = decodingKey;
+            }
+        }
+        // 3순위: 인코딩 키 사용 (이미 URL 인코딩된 키)
+        else if (rentalNoticeEncodingKey != null && !rentalNoticeEncodingKey.isEmpty()) {
+            rawServiceKey = rentalNoticeEncodingKey;
+            encodedServiceKey = rentalNoticeEncodingKey;
+        }
+        // 4순위: service-key 사용
+        else {
+            rawServiceKey = serviceKey;
+            try {
+                encodedServiceKey = URLEncoder.encode(serviceKey, StandardCharsets.UTF_8);
+            } catch (Exception e) {
+                encodedServiceKey = serviceKey;
+            }
+        }
+        
+        // final 변수로 복사하여 람다에서 사용
+        final String finalEncodedServiceKey = encodedServiceKey;
+
+        // 필수 파라미터: 공고게시일, 공고마감일
+        java.time.LocalDate today = java.time.LocalDate.now();
+        java.time.LocalDate startDate = today.minusYears(10); // 10년 전부터
+        java.time.LocalDate endDate = today.plusYears(1); // 1년 후까지
+        
+        String panNtStDt = startDate.format(java.time.format.DateTimeFormatter.ofPattern("yyyy.MM.dd"));
+        String clsgDt = endDate.format(java.time.format.DateTimeFormatter.ofPattern("yyyy.MM.dd"));
+        
+        System.out.println("공고문 API 서비스 키 (원본, 처음 50자): " + (rawServiceKey != null && rawServiceKey.length() > 50 
+                ? rawServiceKey.substring(0, 50) + "..." 
+                : rawServiceKey));
+        System.out.println("공고문 API 서비스 키 (인코딩됨, 처음 50자): " + (encodedServiceKey != null && encodedServiceKey.length() > 50 
+                ? encodedServiceKey.substring(0, 50) + "..." 
+                : encodedServiceKey));
+
+        // 필수 파라미터: 공고게시일, 공고마감일
+        // API 문서: https://www.data.go.kr/data/15058530/openapi.do
+        // 요청주소: http://apis.data.go.kr/B552555/lhLeaseNoticeInfo1/lhLeaseNoticeInfo1
+        System.out.println("LH 공고문 API 요청 준비:");
+        System.out.println("  - Base URL: " + lhRentalNoticeUrl);
+        System.out.println("  - Path: /lhLeaseNoticeInfo1/lhLeaseNoticeInfo1");
+        System.out.println("  - PAN_NT_ST_DT: " + panNtStDt);
+        System.out.println("  - CLSG_DT: " + clsgDt);
+
+        // serviceKey는 이미 한 번 인코딩된 값을 사용
+        // 전체 URL 문자열을 직접 구성하여 URI.create()로 전달 (이중 인코딩 방지)
+        final String finalEncodedServiceKeyForUri = finalEncodedServiceKey;
+        
+        // 전체 URL 문자열 구성 (이미 인코딩된 serviceKey를 그대로 사용)
+        // API 문서에 따르면 요청주소는 /lhLeaseNoticeInfo1/lhLeaseNoticeInfo1
+        StringBuilder urlString = new StringBuilder(lhRentalNoticeUrl);
+        urlString.append("/lhLeaseNoticeInfo1/lhLeaseNoticeInfo1")
+                 .append("?serviceKey=").append(finalEncodedServiceKeyForUri) // 이미 인코딩된 키를 그대로 사용
+                 .append("&PG_SZ=").append(numOfRows != null ? numOfRows : 10)
+                 .append("&PAGE=").append(pageNo != null ? pageNo : 1)
+                 .append("&PAN_NT_ST_DT=").append(panNtStDt)
+                 .append("&CLSG_DT=").append(clsgDt);
+        
+        if (brtcCode != null && !brtcCode.isEmpty()) {
+            // brtcCode는 인코딩 필요
+            urlString.append("&CNP_CD=").append(URLEncoder.encode(brtcCode, StandardCharsets.UTF_8));
+        }
+        
+        String fullUrl = urlString.toString();
+        System.out.println("공고문 API 최종 요청 URL: " + fullUrl);
+        
+        // URI 객체를 직접 생성하여 WebClient에 전달 (이중 인코딩 방지)
+        // baseUrl이 설정된 WebClient와 충돌을 피하기 위해 WebClient.create() 사용
+        URI uri = URI.create(fullUrl);
+        
+        return WebClient.create()
+                .get()
+                .uri(uri) // URI 객체를 직접 전달 (WebClient가 추가 인코딩하지 않음)
+                .accept(MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML)
+                .exchangeToMono(response -> {
+                    // HTTP 상태 코드 확인
+                    if (response.statusCode().is2xxSuccessful()) {
+                        return response.bodyToMono(String.class)
+                                .doOnNext(responseBody -> {
+                                    // 응답 내용 확인 (디버깅용)
+                                    if (responseBody != null && responseBody.length() < 500) {
+                                        System.out.println("공고문 API 응답 (처음 500자): " + responseBody);
+                                    } else if (responseBody != null) {
+                                        System.out.println("공고문 API 응답 (처음 500자): " + responseBody.substring(0, 500));
+                                    }
+                                })
+                                .map(responseBody -> {
+                                    // JSON 파싱 시도
+                                    // 실제 API 응답은 배열로 시작: [{"dsSch":[...]}, {"dsList":[...]}]
+                                    try {
+                                        ObjectMapper objectMapper = new ObjectMapper();
+                                        // 배열로 파싱
+                                        List<Object> responseArray = objectMapper.readValue(responseBody, List.class);
+                                        
+                                        // 두 번째 요소에서 dsList 추출
+                                        if (responseArray != null && responseArray.size() >= 2) {
+                                            Object secondElement = responseArray.get(1);
+                                            String secondElementJson = objectMapper.writeValueAsString(secondElement);
+                                            return objectMapper.readValue(secondElementJson, LHRentalNoticeResponse.class);
+                                        } else {
+                                            // 배열이 아니거나 요소가 부족한 경우 빈 응답 반환
+                                            return new LHRentalNoticeResponse();
+                                        }
+                                    } catch (Exception e) {
+                                        System.err.println("공고문 API JSON 파싱 실패. 응답 내용: " + 
+                                            (responseBody != null && responseBody.length() > 1000 
+                                                ? responseBody.substring(0, 1000) 
+                                                : responseBody));
+                                        throw new RuntimeException("공고문 API 응답 파싱 실패: " + e.getMessage(), e);
+                                    }
+                                });
+                    } else {
+                        // 에러 응답도 본문 읽기
+                        return response.bodyToMono(String.class)
+                                .doOnNext(errorBody -> {
+                                    System.err.println("공고문 API 에러 응답 (상태코드: " + response.statusCode() + "): " + 
+                                        (errorBody != null && errorBody.length() > 500 
+                                            ? errorBody.substring(0, 500) 
+                                            : errorBody));
+                                })
+                                .flatMap(errorBody -> {
+                                    return Mono.error(new RuntimeException("공고문 API 호출 실패: " + response.statusCode() + 
+                                        (errorBody != null ? " - " + errorBody : "")));
+                                });
+                    }
+                })
+                .doOnError(error -> {
+                    System.err.println("LH 공고문 API 호출 오류: " + error.getMessage());
+                });
+    }
+
+    /**
+     * 전체 공고문 데이터 조회 (페이징 처리)
+     */
+    public Mono<LHRentalNoticeResponse> getAllLHRentalNoticeList(
+            String brtcCode,
+            String signguCode) {
+        return getLHRentalNoticeList(1, 1000, brtcCode, signguCode, null);
+    }
+
+    /**
+     * 온통청년 청년정책 조회
+     * 파이썬 코드 참고: apiKeyNm, rtnType=json, pageNum, pageSize
+     * @param pageNum 페이지 번호 (기본값: 1)
+     * @param pageSize 페이지당 데이터 개수 (기본값: 100)
+     * @return 청년정책 응답
+     */
+    public Mono<YouthPolicyResponse> getYouthPolicyList(
+            Integer pageNum,
+            Integer pageSize) {
+
+        System.out.println("청년정책 API 서비스 키: " + (youthPolicyServiceKey != null && youthPolicyServiceKey.length() > 20
+                ? youthPolicyServiceKey.substring(0, 20) + "..."
+                : youthPolicyServiceKey));
+
+        // URI 빌더 생성 (파이썬 코드 참고)
+        StringBuilder uriBuilder = new StringBuilder();
+        uriBuilder.append("?apiKeyNm=").append(URLEncoder.encode(youthPolicyServiceKey, StandardCharsets.UTF_8))
+                .append("&rtnType=json")
+                .append("&pageNum=").append(pageNum != null ? pageNum : 1)
+                .append("&pageSize=").append(pageSize != null ? pageSize : 100);
+
+        String requestUri = uriBuilder.toString();
+        System.out.println("청년정책 API 요청 URL: " + youthPolicyUrl + requestUri);
+
+        return youthPolicyWebClient.get()
+                .uri(requestUri)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .bodyToMono(String.class)
+                .doOnNext(responseBody -> {
+                    // 응답 내용 확인 (디버깅용)
+                    if (responseBody != null && responseBody.length() < 2000) {
+                        System.out.println("청년정책 API 응답 (전체): " + responseBody);
+                    } else if (responseBody != null) {
+                        System.out.println("청년정책 API 응답 (처음 2000자): " + responseBody.substring(0, 2000));
+                    }
+                })
+                .map(responseBody -> {
+                    // JSON 파싱 시도
+                    try {
+                        ObjectMapper objectMapper = new ObjectMapper();
+                        return objectMapper.readValue(responseBody, YouthPolicyResponse.class);
+                    } catch (Exception e) {
+                        System.err.println("청년정책 API JSON 파싱 실패. 응답 내용: " +
+                                (responseBody != null && responseBody.length() > 1000
+                                        ? responseBody.substring(0, 1000)
+                                        : responseBody));
+                        throw new RuntimeException("청년정책 API 응답 파싱 실패: " + e.getMessage(), e);
+                    }
+                })
+                .doOnError(error -> {
+                    System.err.println("청년정책 API 호출 오류: " + error.getMessage());
+                });
+    }
+
+    /**
+     * 전체 청년정책 데이터 조회 (페이징 처리)
+     */
+    public Mono<YouthPolicyResponse> getAllYouthPolicyList() {
+        return getYouthPolicyList(1, 100);
     }
 }
 

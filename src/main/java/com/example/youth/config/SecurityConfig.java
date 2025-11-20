@@ -22,6 +22,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/main/**").permitAll() // 메인 페이지 (추후 인증 추가 시 authenticated()로 변경)
                 .requestMatchers("/api/user/**").permitAll() // 개발 단계에서는 허용 (추후 인증 추가 시 authenticated()로 변경)
                 .requestMatchers("/api/housing/**").permitAll() // 임대주택 API (추후 인증 추가 시 authenticated()로 변경)
+                .requestMatchers("/api/policy/**").permitAll() // 청년정책 API (추후 인증 추가 시 authenticated()로 변경)
                 .requestMatchers("/api/admin/**").permitAll() // 관리자 API (추후 인증 추가 시 ADMIN 권한 필요)
                 .anyRequest().permitAll() // 개발 단계에서는 나머지 허용 (필요시 변경)
             );

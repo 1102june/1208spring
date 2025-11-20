@@ -11,7 +11,7 @@ public class Housing {
     @Column(length = 50)
     private String housingId;
 
-    @Column(length = 50, nullable = false)
+    @Column(length = 255, nullable = false)
     private String name;
 
     @Column(length = 255)
@@ -40,5 +40,4 @@ public class Housing {
     
     // 상세 정보 필드
     private String housingType; // 주택유형 (예: 국민임대, 50년임대 등)
-    private Integer depositRefund; // 보증금환급금
 }

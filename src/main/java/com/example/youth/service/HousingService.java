@@ -73,8 +73,7 @@ public class HousingService {
                 .isBookmarked(isBookmarked)
                 .latitude(housing.getLatitude())
                 .longitude(housing.getLongitude())
-                .housingType(housing.getHousingType())
-                .depositRefund(housing.getDepositRefund());
+                .housingType(housing.getHousingType());
         
         // 사용자 위치가 제공된 경우 거리 계산
         if (userLat != null && userLon != null && 
