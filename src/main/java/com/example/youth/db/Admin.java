@@ -18,5 +18,6 @@ public class Admin {
     @Column(nullable = false, length = 255)
     private String passwordHash;
 
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 }

@@ -6,9 +6,9 @@ import lombok.*;
 import java.time.LocalDateTime;
 import java.util.List;
 
-
 @Entity
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter @Setter
+@NoArgsConstructor @AllArgsConstructor @Builder
 public class User {
 
     @Id
@@ -18,16 +18,20 @@ public class User {
     @Column(nullable = false, unique = true, length = 100)
     private String email;
 
+    // 🔥 OTP 인증 여부 관리 (Firebase 이메일 인증 X)
+    @Column(nullable = false)
+    private boolean emailVerified = false;
+
     @Column(nullable = true, length = 255)
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)
     @Column(length = 10)
-    private LoginType loginType = LoginType.local;
+    private LoginType loginType;
 
     @Enumerated(EnumType.STRING)
     @Column(length = 10)
-    private OSType osType = OSType.android;
+    private OSType osType;
 
     @Column(length = 10)
     private String appVersion;
@@ -39,7 +43,7 @@ public class User {
     private String deviceId;
 
     @Column(nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt;
 
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL)
     private UserProfile profile;
@@ -59,4 +63,3 @@ public class User {
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
     private List<AIRecommendation> aiRecommendations;
 }
-

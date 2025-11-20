@@ -2,36 +2,60 @@ package com.example.youth.service;
 
 import com.example.youth.db.User;
 import com.example.youth.repository.UserRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-@Service // 이 파일은 @Service가 맞습니다.
+@Service
+@RequiredArgsConstructor
 public class UserService {
 
-    @Autowired
-    private UserRepository userRepository; // Spring이 자동으로 UserRepository를 주입합니다.
+    private final UserRepository userRepository;
 
     /**
      * 회원가입 로직
-     * (UserController에서 호출)
+     * (SignupController에서 호출)
      */
     public String registerUser(User user) {
-        // 1. 이메일 중복 확인
         if (userRepository.existsByEmail(user.getEmail())) {
             return "Email already exists";
         }
 
-        // 2. 중복이 없으면 DB에 저장
         userRepository.save(user);
         return "회원가입 성공";
     }
 
     /**
-     * UID로 사용자 정보 조회 로직
-     * (기존 controller/UserService에 있던 기능)
+     * UID로 사용자 조회
      */
     public User getUserByUid(String uid) {
-        // 1. UID로 사용자를 찾아보고, 없으면 null 반환
         return userRepository.findById(uid).orElse(null);
+    }
+
+    /**
+     * 이메일로 사용자 조회 (OTP 등에서 사용)
+     */
+    public User getUserByEmail(String email) {
+        return userRepository.findByEmail(email).orElse(null);
+    }
+
+    /**
+     * 🔥 OTP 인증 성공 시 이메일 인증 완료로 업데이트
+     */
+    public void updateEmailVerified(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        user.setEmailVerified(true);  // ← 반드시 User 엔티티에 emailVerified 필드 존재해야 함
+
+        userRepository.save(user);
+    }
+
+    /**
+     * 🔥 이메일 인증 여부 확인 API
+     */
+    public boolean isEmailVerified(String email) {
+        return userRepository.findByEmail(email)
+                .map(User::isEmailVerified)
+                .orElse(false);
     }
 }

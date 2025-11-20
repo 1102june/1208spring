@@ -5,36 +5,44 @@ import com.example.youth.service.UserService;
 import com.example.youth.dto.LoginRequest;
 import com.example.youth.db.User;
 import com.google.firebase.auth.FirebaseToken;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/auth")
 public class LoginController {
 
-    @Autowired
-    private FirebaseAuthService firebaseAuthService;
+    private final FirebaseAuthService firebaseAuthService;
+    private final UserService userService;
 
-    @Autowired
-    private UserService userService;
+    public LoginController(FirebaseAuthService firebaseAuthService, UserService userService) {
+        this.firebaseAuthService = firebaseAuthService;
+        this.userService = userService;
+    }
 
     @PostMapping("/login")
-    public String login(@RequestBody LoginRequest loginRequest) {
+    public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
         try {
-            // Firebase ID Token 검증
+            // 1) Firebase ID Token 검증
             FirebaseToken decodedToken = firebaseAuthService.verifyToken(loginRequest.getIdToken());
             String uid = decodedToken.getUid();
 
-            // MariaDB에서 사용자 조회
+            // 2) DB에서 사용자 조회
             User user = userService.getUserByUid(uid);
-            if (user != null) {
-                return "로그인 성공";
-            } else {
-                return "사용자 정보 없음";
+            if (user == null) {
+                return ResponseEntity.status(404).body("USER_NOT_FOUND");
             }
+
+            // 3) 🔥 OTP 이메일 인증 여부 체크
+            if (!user.isEmailVerified()) {
+                return ResponseEntity.status(403).body("EMAIL_NOT_VERIFIED");
+            }
+
+            // 4) 로그인 성공
+            return ResponseEntity.ok("LOGIN_SUCCESS");
+
         } catch (Exception e) {
-            // 그 외의 예외 처리
-            return "로그인 처리 중 오류 발생: " + e.getMessage();
+            return ResponseEntity.status(500).body("LOGIN_ERROR: " + e.getMessage());
         }
     }
 }

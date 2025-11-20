@@ -33,4 +33,12 @@ public class Housing {
     private Integer monthlyRent;
     private Integer totalUnits;
     private String link;
+    
+    // 지도 표시를 위한 좌표
+    private Double latitude;  // 위도
+    private Double longitude; // 경도
+    
+    // 상세 정보 필드
+    private String housingType; // 주택유형 (예: 국민임대, 50년임대 등)
+    private Integer depositRefund; // 보증금환급금
 }

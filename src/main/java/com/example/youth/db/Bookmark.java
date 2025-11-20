@@ -1,9 +1,9 @@
-package com.example.youth.db;
+package com.example.youth.DB;
 
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
-
+import com.example.youth.DB.User;
 import com.example.youth.common.ContentType;
 
 

@@ -2,8 +2,8 @@ spring:
   datasource:
     driver-class-name: org.mariadb.jdbc.Driver
     url: jdbc:mariadb://127.0.0.1:3306/wise_young?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Seoul
-    username: root
-    password: 1234
+    username: ${DB_USERNAME:root}  # 환경 변수 사용, 기본값: root
+    password: ${DB_PASSWORD:1234}  # 환경 변수 사용, 기본값: 1234
 
   jpa:
     hibernate:
@@ -16,3 +16,19 @@ spring:
 
 server:
   port: 8080
+
+# 공공데이터 API 설정
+public-data:
+  lh:
+    # 한국토지주택공사_공공임대주택 단지정보 조회 서비스
+    rental-house-list:
+      url: https://data.myhome.go.kr:443/rentalHouseList
+      service-key: ${LH_SERVICE_KEY:}  # 환경 변수에서 가져오기
+      encoding-key: ${LH_ENCODING_KEY:}  # 인코딩 키
+      decoding-key: ${LH_DECODING_KEY:}  # 디코딩 키
+  # 두 번째 API (추가 필요 시)
+  api2:
+    url: ${API2_URL:}
+    service-key: ${API2_SERVICE_KEY:}
+    encoding-key: ${API2_ENCODING_KEY:}
+    decoding-key: ${API2_DECODING_KEY:}

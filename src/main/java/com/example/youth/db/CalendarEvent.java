@@ -22,6 +22,7 @@ public class CalendarEvent {
     private EventType eventType;
 
     private LocalDate endDate;
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 }
 

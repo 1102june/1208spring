@@ -19,6 +19,7 @@ public class Notification {
     private String message;
 
     private LocalDateTime sendDate;
+    @Builder.Default
     private Boolean isRead = false;
 
     @ManyToOne
