@@ -2,10 +2,14 @@ package com.example.youth.controller;
 
 import com.example.youth.dto.ApiResponse;
 import com.example.youth.repository.HousingRepository;
+import com.example.youth.repository.HousingNoticeRepository;
+import com.example.youth.repository.HousingComplexRepository;
 import com.example.youth.service.HousingSyncService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/admin/housing")
@@ -15,7 +19,13 @@ public class HousingSyncController {
     private HousingSyncService housingSyncService;
     
     @Autowired
-    private HousingRepository housingRepository;
+    private HousingRepository housingRepository; // 기존 호환성 유지용
+    
+    @Autowired
+    private HousingNoticeRepository housingNoticeRepository;
+    
+    @Autowired
+    private HousingComplexRepository housingComplexRepository;
 
     /**
      * 임대주택 데이터 동기화 (수동 실행)
@@ -39,35 +49,70 @@ public class HousingSyncController {
     /**
      * 동기화 상태 확인 (테스트용)
      * GET /api/admin/housing/stats
+     * 새로운 두 테이블 구조(housing_notice, housing_complex)의 통계를 반환
      */
     @GetMapping("/stats")
     public ResponseEntity<ApiResponse<Object>> getSyncStats() {
         try {
-            long totalCount = housingRepository.count();
+            // 새로운 테이블 구조 통계
+            long noticeCount = housingNoticeRepository.count();
+            long complexCount = housingComplexRepository.count();
             
-            // 각 필드별 카운트 (쿼리 메서드 사용)
-            long withAddress = totalCount > 0 ? housingRepository.countWithAddress() : 0;
-            long withSupplyArea = totalCount > 0 ? housingRepository.countWithSupplyArea() : 0;
-            long withApplicationStart = totalCount > 0 ? housingRepository.countWithApplicationStart() : 0;
-            long withApplicationEnd = totalCount > 0 ? housingRepository.countWithApplicationEnd() : 0;
+            // 기존 테이블 통계 (호환성 유지)
+            long oldHousingCount = housingRepository.count();
             
             java.util.Map<String, Object> stats = new java.util.HashMap<>();
-            stats.put("totalCount", totalCount);
-            stats.put("withAddress", withAddress);
-            stats.put("withSupplyArea", withSupplyArea);
-            stats.put("withApplicationStart", withApplicationStart);
-            stats.put("withApplicationEnd", withApplicationEnd);
-            stats.put("matchingRate", totalCount > 0 ? 
-                    String.format("%.2f%%", (withAddress * 100.0 / totalCount)) : "0%");
+            
+            // 새로운 테이블 통계
+            stats.put("housingNoticeCount", noticeCount);
+            stats.put("housingComplexCount", complexCount);
+            
+            // 기존 테이블 통계
+            stats.put("oldHousingCount", oldHousingCount);
+            
+            // 실제 매칭 통계 수집
+            try {
+                Map<String, Object> matchingStats = housingSyncService.getMatchingStatistics();
+                stats.put("matchingStats", matchingStats);
+                
+                // 하위 호환성을 위한 예상 매칭 수 (실제 매칭 수 사용)
+                Object totalMatched = matchingStats.get("totalMatched");
+                stats.put("estimatedMatchedCount", totalMatched != null ? totalMatched : Math.min(noticeCount, complexCount));
+            } catch (Exception e) {
+                System.err.println("매칭 통계 수집 중 오류: " + e.getMessage());
+                e.printStackTrace();
+                // 오류 발생 시 기본값 사용
+                stats.put("estimatedMatchedCount", Math.min(noticeCount, complexCount));
+                stats.put("matchingStatsError", e.getMessage());
+            }
+            
+            // 데이터 완성도
+            if (complexCount > 0) {
+                long complexWithAddress = housingComplexRepository.findAll().stream()
+                        .filter(c -> c.getRnAdres() != null && !c.getRnAdres().isEmpty())
+                        .count();
+                stats.put("complexWithAddress", complexWithAddress);
+                stats.put("complexAddressRate", String.format("%.2f%%", (complexWithAddress * 100.0 / complexCount)));
+            }
+            
+            if (noticeCount > 0) {
+                long noticeWithApplicationPeriod = housingNoticeRepository.findAll().stream()
+                        .filter(n -> n.getApplicationStart() != null && n.getApplicationEnd() != null)
+                        .count();
+                stats.put("noticeWithApplicationPeriod", noticeWithApplicationPeriod);
+                stats.put("noticeApplicationPeriodRate", String.format("%.2f%%", (noticeWithApplicationPeriod * 100.0 / noticeCount)));
+            }
             
             return ResponseEntity.ok(ApiResponse.success("동기화 상태 조회 성공", stats));
         } catch (Exception e) {
             e.printStackTrace();
             // 에러 발생 시 기본 정보만 반환
             try {
-                long totalCount = housingRepository.count();
+                long noticeCount = housingNoticeRepository.count();
+                long complexCount = housingComplexRepository.count();
                 java.util.Map<String, Object> stats = new java.util.HashMap<>();
-                stats.put("totalCount", totalCount);
+                stats.put("housingNoticeCount", noticeCount);
+                stats.put("housingComplexCount", complexCount);
                 stats.put("error", e.getMessage());
                 return ResponseEntity.ok(ApiResponse.success("동기화 상태 조회 (부분 성공)", stats));
             } catch (Exception e2) {

@@ -1,9 +1,13 @@
 package com.example.youth.service;
 
 import com.example.youth.DB.Housing;
+import com.example.youth.DB.HousingNotice;
+import com.example.youth.DB.HousingComplex;
 import com.example.youth.dto.publicdata.LHRentalHouseListResponse;
 import com.example.youth.dto.publicdata.LHRentalNoticeResponse;
 import com.example.youth.repository.HousingRepository;
+import com.example.youth.repository.HousingNoticeRepository;
+import com.example.youth.repository.HousingComplexRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,15 +34,21 @@ public class HousingSyncService {
     private RegionCodeMappingService regionCodeMappingService;
 
     @Autowired
-    private HousingRepository housingRepository; // 사용됨: convertToHousing, updateHousingData에서 사용
+    private HousingRepository housingRepository; // 기존 호환성 유지용 (deprecated)
+
+    @Autowired
+    private HousingNoticeRepository housingNoticeRepository;
+
+    @Autowired
+    private HousingComplexRepository housingComplexRepository;
 
     /**
      * LH 공공데이터에서 임대주택 정보를 가져와 DB에 동기화
-     * 1. 공고문 API 전체 데이터 조회
+     * 1. 공고문 API 전체 데이터 조회 → housing_notice 테이블에 저장
      * 2. 공고문 데이터에서 지역 정보 추출
-     * 3. 추출한 지역 정보로 단지정보 API 전체 데이터 조회
-     * 4. 두 API 데이터를 매칭하여 병합
-     * 5. DB에 저장 (공고문 + 단지정보 병합 데이터)
+     * 3. 추출한 지역 정보로 단지정보 API 전체 데이터 조회 → housing_complex 테이블에 저장
+     * 
+     * 각 테이블은 독립적으로 관리되며, 앱에서 조회 시 두 테이블을 조인/병합하여 제공
      * 
      * @param brtcCode 광역시도 코드 (옵션, 공고문 API용)
      * @param signguCode 시군구 코드 (옵션, 공고문 API용)
@@ -48,7 +58,7 @@ public class HousingSyncService {
      */
     public void syncLHRentalHouseData(String brtcCode, String signguCode) {
         System.out.println("========================================");
-        System.out.println("임대주택 데이터 동기화 시작 (공고문 + 단지정보 전체 조회 → 병합 → 저장)");
+        System.out.println("임대주택 데이터 동기화 시작 (공고문 + 단지정보 각각 독립 저장)");
         System.out.println("========================================");
         
         // 지역 코드 매핑 서비스 초기화
@@ -79,6 +89,19 @@ public class HousingSyncService {
                             List<LHRentalNoticeResponse.Item> noticeItems = noticeResponse.getDsList();
                             System.out.println("✅ 공고문 API 전체 데이터 수집: " + noticeItems.size() + "건");
                             
+                            // 디버깅: 첫 번째 공고문의 실제 필드 값 확인
+                            if (!noticeItems.isEmpty()) {
+                                LHRentalNoticeResponse.Item firstNotice = noticeItems.get(0);
+                                System.out.println("=== 공고문 API 응답 필드 확인 (첫 번째 항목) ===");
+                                System.out.println("  - panId: " + firstNotice.getPanId());
+                                System.out.println("  - panNm: " + firstNotice.getPanNm());
+                                System.out.println("  - hsmpSn: " + firstNotice.getHsmpSn());
+                                System.out.println("  - hsmpNm: " + firstNotice.getHsmpNm());
+                                System.out.println("  - cnpCdNm: " + firstNotice.getCnpCdNm());
+                                System.out.println("  - dtlUrl: " + (firstNotice.getDtlUrl() != null && firstNotice.getDtlUrl().length() > 100 ? firstNotice.getDtlUrl().substring(0, 100) + "..." : firstNotice.getDtlUrl()));
+                                System.out.println("=============================================");
+                            }
+                            
                             // 공고문 데이터를 Map으로 변환
                             Map<String, LHRentalNoticeResponse.Item> noticeMapByHsmpSn = new HashMap<>();
                             Map<String, LHRentalNoticeResponse.Item> noticeMapByHsmpNm = new HashMap<>();
@@ -105,26 +128,62 @@ public class HousingSyncService {
                             System.out.println("  - hsmpNm 기준: " + noticeMapByHsmpNm.size() + "건");
                             
                             // 2단계: 공고문 데이터에서 지역 정보 추출
+                            System.out.println("공고문 데이터에서 지역 정보 추출 시작...");
                             Map<String, Set<String>> brtcToSignguCodes = extractRegionsFromNotices(noticeItems);
+                            System.out.println("지역 정보 추출 완료: " + brtcToSignguCodes.size() + "개 광역시도");
+                            
+                            // 공고문 데이터 저장 (지역 정보 추출 전에 먼저 저장)
+                            System.out.println("공고문 데이터 저장 시작...");
+                            saveNoticeData(noticeItems);
                             
                             if (brtcToSignguCodes.isEmpty()) {
-                                System.out.println("⚠️ 공고문에서 지역 정보를 추출할 수 없습니다.");
-                                // 공고문 데이터만 저장
-                                saveNoticeDataOnly(noticeMapByHsmpSn, noticeMapByHsmpNm);
+                                System.err.println("⚠️ 공고문에서 지역 정보를 추출할 수 없습니다. 단지정보 조회를 건너뜁니다.");
+                                System.err.println("⚠️ 공고문 데이터 샘플 확인:");
+                                if (!noticeItems.isEmpty()) {
+                                    LHRentalNoticeResponse.Item sample = noticeItems.get(0);
+                                    System.err.println("  - 샘플 cnpCdNm: " + sample.getCnpCdNm());
+                                    System.err.println("  - 샘플 hsmpNm: " + sample.getHsmpNm());
+                                    System.err.println("  - 샘플 hsmpSn: " + sample.getHsmpSn());
+                                }
                                 return;
                             }
                             
                             System.out.println("추출된 광역시도 코드: " + brtcToSignguCodes.size() + "개");
+                            // 각 광역시도의 시군구 코드 수 출력
+                            for (Map.Entry<String, Set<String>> entry : brtcToSignguCodes.entrySet()) {
+                                System.out.println("  - " + entry.getKey() + ": " + entry.getValue().size() + "개 시군구");
+                            }
                             
                             // 3단계: 단지정보 API 전체 데이터 조회 (공고문에서 추출한 지역 정보 기반)
+                            // 리액티브 스레드에서 block() 호출을 피하기 위해 별도 스레드에서 실행
                             System.out.println("단지정보 API 전체 데이터 조회 시작 (공고문 지역 정보 기반)");
-                            List<LHRentalHouseListResponse.Item> allHouseItems = syncTargetRegions(brtcToSignguCodes);
                             
-                            System.out.println("✅ 단지정보 API 전체 데이터 수집: " + allHouseItems.size() + "건");
+                            // CompletableFuture를 사용하여 별도 스레드에서 실행
+                            java.util.concurrent.CompletableFuture<List<LHRentalHouseListResponse.Item>> future = 
+                                java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                                    return syncTargetRegions(brtcToSignguCodes);
+                                });
                             
-                            // 4단계: 두 API 데이터를 매칭하여 병합 후 DB에 저장
-                            System.out.println("공고문 + 단지정보 데이터 병합 및 저장 시작...");
-                            saveHousingDataWithNotices(allHouseItems, noticeMapByHsmpSn, noticeMapByHsmpNm);
+                            // 비동기로 결과 처리
+                            future.whenComplete((allHouseItems, throwable) -> {
+                                if (throwable != null) {
+                                    System.err.println("⚠️ 단지정보 API 조회 중 오류 발생: " + throwable.getMessage());
+                                    throwable.printStackTrace();
+                                    return;
+                                }
+                                
+                                System.out.println("✅ 단지정보 API 전체 데이터 수집: " + allHouseItems.size() + "건");
+                                
+                                // 4단계: 각 테이블에 독립적으로 저장
+                                if (allHouseItems.isEmpty()) {
+                                    System.err.println("⚠️ 단지정보 API에서 데이터를 수집하지 못했습니다. 저장을 건너뜁니다.");
+                                    System.err.println("⚠️ 지역 정보나 API 응답 형식에 문제가 있을 수 있습니다.");
+                                } else {
+                                    System.out.println("단지정보 데이터 저장 시작...");
+                                    saveComplexData(allHouseItems);
+                                    System.out.println("✅ 단지정보 데이터 저장 완료!");
+                                }
+                            });
                         },
                         error -> {
                             System.err.println("========================================");
@@ -187,7 +246,10 @@ public class HousingSyncService {
                     }
                 } catch (Exception e) {
                     // 에러는 무시하고 계속 진행 (존재하지 않는 코드 조합일 수 있음)
-                    // System.err.println("API 호출 에러 (" + brtcCode + "-" + signguCode + "): " + e.getMessage());
+                    // 하지만 처음 10개 에러는 로그 출력
+                    if (processedCount <= 10) {
+                        System.err.println("  ⚠️ API 호출 에러 (" + brtcCode + "-" + signguCode + "): " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                    }
                 }
                 
                 // API 호출 제한을 피하기 위해 짧은 딜레이 추가 (50ms)
@@ -479,8 +541,14 @@ public class HousingSyncService {
      */
     private Map<String, Set<String>> extractRegionsFromNotices(List<LHRentalNoticeResponse.Item> noticeItems) {
         Map<String, Set<String>> brtcToSignguCodes = new HashMap<>();
+        int processedCount = 0;
+        int mappedCount = 0;
+        int failedMappingCount = 0;
+        
+        System.out.println("지역 정보 추출: 공고문 " + noticeItems.size() + "건 처리 시작...");
         
         for (LHRentalNoticeResponse.Item notice : noticeItems) {
+            processedCount++;
             // CNP_CD_NM (지역명) 추출 및 광역시도 코드로 변환
             String cnpCdNm = notice.getCnpCdNm(); // 예: "충청북도", "서울특별시"
             if (cnpCdNm != null && !cnpCdNm.isEmpty()) {
@@ -491,11 +559,36 @@ public class HousingSyncService {
                     if (!signguCodes.isEmpty()) {
                         brtcToSignguCodes.putIfAbsent(mappedBrtcCode, new HashSet<>());
                         brtcToSignguCodes.get(mappedBrtcCode).addAll(signguCodes.values());
+                        mappedCount++;
+                        // 처음 10개만 상세 로그
+                        if (mappedCount <= 10) {
+                            System.out.println("  ✅ 매핑 성공: " + cnpCdNm + " -> " + mappedBrtcCode + " (" + signguCodes.size() + "개 시군구)");
+                        }
+                    } else {
+                        failedMappingCount++;
+                        if (failedMappingCount <= 5) {
+                            System.err.println("  ⚠️ 매핑 실패 (시군구 코드 없음): " + cnpCdNm + " -> " + mappedBrtcCode);
+                        }
+                    }
+                } else {
+                    failedMappingCount++;
+                    if (failedMappingCount <= 5) {
+                        System.err.println("  ⚠️ 매핑 실패 (광역시도 코드 없음): " + cnpCdNm);
                     }
                 }
-                // 매핑 실패는 조용히 처리 (특수 케이스: "전국", "외" 등은 정상)
+            } else {
+                // cnpCdNm이 없는 경우도 카운트
+                if (processedCount <= 5) {
+                    System.err.println("  ⚠️ cnpCdNm 필드 없음: hsmpNm=" + notice.getHsmpNm());
+                }
             }
         }
+        
+        System.out.println("지역 정보 추출 완료:");
+        System.out.println("  - 처리된 공고문: " + processedCount + "건");
+        System.out.println("  - 매핑 성공: " + mappedCount + "건");
+        System.out.println("  - 매핑 실패: " + failedMappingCount + "건");
+        System.out.println("  - 추출된 광역시도: " + brtcToSignguCodes.size() + "개");
         
         return brtcToSignguCodes;
     }
@@ -842,8 +935,343 @@ public class HousingSyncService {
     }
 
     /**
-     * 공고문 데이터만으로 Housing 엔티티 생성 및 DB에 저장 (트랜잭션 적용)
+     * 공고문 데이터를 housing_notice 테이블에 저장 (트랜잭션 적용)
      */
+    @Transactional
+    private void saveNoticeData(List<LHRentalNoticeResponse.Item> noticeItems) {
+        int savedCount = 0;
+        int updatedCount = 0;
+        
+        for (LHRentalNoticeResponse.Item notice : noticeItems) {
+            try {
+                HousingNotice housingNotice = convertToHousingNotice(notice);
+                
+                // DB에 저장 (이미 존재하면 업데이트)
+                boolean exists = housingNoticeRepository.existsById(housingNotice.getNoticeId());
+                housingNoticeRepository.findById(housingNotice.getNoticeId())
+                        .ifPresentOrElse(
+                                existing -> {
+                                    // 기존 데이터 업데이트
+                                    updateHousingNotice(existing, housingNotice);
+                                    housingNoticeRepository.save(existing);
+                                },
+                                () -> {
+                                    // 새 데이터 저장
+                                    housingNoticeRepository.save(housingNotice);
+                                }
+                        );
+                if (exists) {
+                    updatedCount++;
+                } else {
+                    savedCount++;
+                }
+            } catch (Exception e) {
+                System.err.println("공고문 데이터 저장 실패: " + 
+                        (notice.getHsmpNm() != null ? notice.getHsmpNm() : "알 수 없음") + 
+                        " - " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+        
+        System.out.println("========================================");
+        System.out.println("공고문 데이터 저장 완료:");
+        System.out.println("  - 총 공고문: " + noticeItems.size() + "건");
+        System.out.println("  - 저장: " + savedCount + "건, 업데이트: " + updatedCount + "건");
+        System.out.println("========================================");
+    }
+
+    /**
+     * 단지정보 데이터를 housing_complex 테이블에 저장 (트랜잭션 적용)
+     */
+    @Transactional
+    private void saveComplexData(List<LHRentalHouseListResponse.Item> houseItems) {
+        int savedCount = 0;
+        int updatedCount = 0;
+        
+        for (LHRentalHouseListResponse.Item item : houseItems) {
+            try {
+                HousingComplex housingComplex = convertToHousingComplex(item);
+                
+                // DB에 저장 (이미 존재하면 업데이트)
+                boolean exists = housingComplexRepository.existsById(housingComplex.getComplexId());
+                housingComplexRepository.findById(housingComplex.getComplexId())
+                        .ifPresentOrElse(
+                                existing -> {
+                                    // 기존 데이터 업데이트
+                                    updateHousingComplex(existing, housingComplex);
+                                    housingComplexRepository.save(existing);
+                                },
+                                () -> {
+                                    // 새 데이터 저장
+                                    housingComplexRepository.save(housingComplex);
+                                }
+                        );
+                if (exists) {
+                    updatedCount++;
+                } else {
+                    savedCount++;
+                }
+            } catch (Exception e) {
+                System.err.println("단지정보 데이터 저장 실패: " + 
+                        (item.getHsmpNm() != null ? item.getHsmpNm() : "알 수 없음") + 
+                        " - " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+        
+        System.out.println("========================================");
+        System.out.println("단지정보 데이터 저장 완료:");
+        System.out.println("  - 총 단지정보: " + houseItems.size() + "건");
+        System.out.println("  - 저장: " + savedCount + "건, 업데이트: " + updatedCount + "건");
+        System.out.println("========================================");
+    }
+
+    /**
+     * 공고문 API Item을 HousingNotice 엔티티로 변환
+     */
+    private HousingNotice convertToHousingNotice(LHRentalNoticeResponse.Item notice) {
+        // noticeId 생성: panId가 있으면 panId, 없으면 hsmpSn + panNm 조합
+        String noticeId = notice.getPanId() != null && !notice.getPanId().isEmpty()
+                ? notice.getPanId()
+                : (notice.getHsmpSn() != null ? notice.getHsmpSn() : "") + 
+                  (notice.getPanNm() != null ? notice.getPanNm() : "");
+        
+        if (noticeId.isEmpty()) {
+            noticeId = "NOTICE_" + System.currentTimeMillis() + "_" + (notice.getHsmpNm() != null ? notice.getHsmpNm().hashCode() : 0);
+        }
+        
+        // hsmpSn과 hsmpNm이 API 응답에 없을 수 있으므로, 공고명에서 추출 시도
+        String hsmpSn = notice.getHsmpSn();
+        String hsmpNm = notice.getHsmpNm();
+        
+        // hsmpNm이 없으면 공고명에서 단지명 추출 시도
+        if ((hsmpNm == null || hsmpNm.isEmpty()) && notice.getPanNm() != null && !notice.getPanNm().isEmpty()) {
+            // 공고명 예: "2024년 LH공사 공급주택 공고 (서울 양천구 목동단지)"
+            // 단지명은 보통 괄호 안에 있거나 특정 패턴을 따름
+            String panNm = notice.getPanNm();
+            // 괄호 안의 내용 추출
+            if (panNm.contains("(") && panNm.contains(")")) {
+                int start = panNm.indexOf("(") + 1;
+                int end = panNm.indexOf(")");
+                if (start < end) {
+                    String extracted = panNm.substring(start, end).trim();
+                    // "단지", "아파트" 등이 포함된 경우만 단지명으로 인정
+                    if (extracted.contains("단지") || extracted.contains("아파트") || extracted.contains("주택")) {
+                        hsmpNm = extracted;
+                    }
+                }
+            }
+        }
+        
+        HousingNotice.HousingNoticeBuilder builder = HousingNotice.builder()
+                .noticeId(noticeId)
+                .hsmpSn(hsmpSn)
+                .hsmpNm(hsmpNm)
+                .panId(notice.getPanId())
+                .panNm(notice.getPanNm())
+                .dtlUrl(notice.getDtlUrl())
+                .panNtStDt(notice.getPanNtStDt())
+                .clsgDt(notice.getClsgDt())
+                .panDt(notice.getPanDt())
+                .cnpCd(notice.getCnpCd())
+                .cnpCdNm(notice.getCnpCdNm())
+                .uppAisTpCd(notice.getUppAisTpCd())
+                .uppAisTpNm(notice.getUppAisTpNm())
+                .aisTpCd(notice.getAisTpCd())
+                .aisTpCdNm(notice.getAisTpCdNm())
+                .panSs(notice.getPanSs())
+                .allCnt(notice.getAllCnt());
+        
+        // 신청 시작일 파싱
+        if (notice.getRceptBgnde() != null && !notice.getRceptBgnde().isEmpty()) {
+            try {
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
+                java.util.Date date = sdf.parse(notice.getRceptBgnde());
+                builder.applicationStart(new Date(date.getTime()));
+            } catch (ParseException e) {
+                // 파싱 실패 시 무시
+            }
+        }
+        
+        // 신청 종료일 파싱
+        if (notice.getRceptEndde() != null && !notice.getRceptEndde().isEmpty()) {
+            try {
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
+                java.util.Date date = sdf.parse(notice.getRceptEndde());
+                builder.applicationEnd(new Date(date.getTime()));
+            } catch (ParseException e) {
+                // 파싱 실패 시 무시
+            }
+        }
+        
+        return builder.build();
+    }
+
+    /**
+     * 단지정보 API Item을 HousingComplex 엔티티로 변환
+     */
+    private HousingComplex convertToHousingComplex(LHRentalHouseListResponse.Item item) {
+        // complexId는 hsmpSn 사용
+        String complexId = item.getHsmpSn() != null && !item.getHsmpSn().isEmpty()
+                ? item.getHsmpSn()
+                : "COMPLEX_" + System.currentTimeMillis() + "_" + (item.getHsmpNm() != null ? item.getHsmpNm().hashCode() : 0);
+        
+        HousingComplex.HousingComplexBuilder builder = HousingComplex.builder()
+                .complexId(complexId)
+                .hsmpNm(item.getHsmpNm())
+                .insttNm(item.getInsttNm())
+                .brtcCode(item.getBrtcCode())
+                .brtcNm(item.getBrtcNm())
+                .signguCode(item.getSignguCode())
+                .signguNm(item.getSignguNm())
+                .rnAdres(item.getRnAdres())
+                .pnu(item.getPnu())
+                .competDe(item.getCompetDe())
+                .hshldCo(item.getHshldCo())
+                .suplyTyNm(item.getSuplyTyNm())
+                .styleNm(item.getStyleNm())
+                .suplyPrvuseAr(item.getSuplyPrvuseAr())
+                .suplyCmnuseAr(item.getSuplyCmnuseAr())
+                .houseTyNm(item.getHouseTyNm())
+                .heatMthdDetailNm(item.getHeatMthdDetailNm())
+                .buldStleNm(item.getBuldStleNm())
+                .elvtrInstlAtNm(item.getElvtrInstlAtNm())
+                .parkngCo(item.getParkngCo())
+                .bassRentGtn(item.getBassRentGtn())
+                .bassMtRntchrg(item.getBassMtRntchrg())
+                .bassCnvrsGtnLmt(item.getBassCnvrsGtnLmt());
+        
+        // 준공 일자 파싱
+        if (item.getCompetDe() != null && !item.getCompetDe().isEmpty()) {
+            try {
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
+                java.util.Date date = sdf.parse(item.getCompetDe());
+                builder.completeDate(new Date(date.getTime()));
+            } catch (ParseException e) {
+                // 파싱 실패 시 무시
+            }
+        }
+        
+        // 공급 면적 파싱
+        if (item.getSuplyPrvuseAr() != null && !item.getSuplyPrvuseAr().isEmpty()) {
+            try {
+                builder.supplyArea(Double.parseDouble(item.getSuplyPrvuseAr()));
+            } catch (NumberFormatException e) {
+                // 파싱 실패 시 무시
+            }
+        }
+        
+        // 세대수 파싱
+        if (item.getHshldCo() != null && !item.getHshldCo().isEmpty()) {
+            try {
+                builder.totalUnits(Integer.parseInt(item.getHshldCo()));
+            } catch (NumberFormatException e) {
+                // 파싱 실패 시 무시
+            }
+        }
+        
+        // 승강기 설치여부 파싱
+        if (item.getElvtrInstlAtNm() != null) {
+            builder.elevator(item.getElvtrInstlAtNm().contains("설치") || 
+                           item.getElvtrInstlAtNm().contains("전체"));
+        }
+        
+        // 주차수 파싱
+        if (item.getParkngCo() != null && !item.getParkngCo().isEmpty()) {
+            try {
+                builder.parkingSpaces(Integer.parseInt(item.getParkngCo()));
+            } catch (NumberFormatException e) {
+                // 파싱 실패 시 무시
+            }
+        }
+        
+        // 기본 임대보증금 파싱
+        if (item.getBassRentGtn() != null && !item.getBassRentGtn().isEmpty()) {
+            try {
+                builder.deposit(Integer.parseInt(item.getBassRentGtn()));
+            } catch (NumberFormatException e) {
+                // 파싱 실패 시 무시
+            }
+        }
+        
+        // 기본 월임대료 파싱
+        if (item.getBassMtRntchrg() != null && !item.getBassMtRntchrg().isEmpty()) {
+            try {
+                builder.monthlyRent(Integer.parseInt(item.getBassMtRntchrg()));
+            } catch (NumberFormatException e) {
+                // 파싱 실패 시 무시
+            }
+        }
+        
+        return builder.build();
+    }
+
+    /**
+     * HousingNotice 업데이트
+     */
+    private void updateHousingNotice(HousingNotice existing, HousingNotice newData) {
+        existing.setHsmpSn(newData.getHsmpSn());
+        existing.setHsmpNm(newData.getHsmpNm());
+        existing.setPanId(newData.getPanId());
+        existing.setPanNm(newData.getPanNm());
+        existing.setDtlUrl(newData.getDtlUrl());
+        existing.setPanNtStDt(newData.getPanNtStDt());
+        existing.setClsgDt(newData.getClsgDt());
+        existing.setPanDt(newData.getPanDt());
+        existing.setApplicationStart(newData.getApplicationStart());
+        existing.setApplicationEnd(newData.getApplicationEnd());
+        existing.setCnpCd(newData.getCnpCd());
+        existing.setCnpCdNm(newData.getCnpCdNm());
+        existing.setUppAisTpCd(newData.getUppAisTpCd());
+        existing.setUppAisTpNm(newData.getUppAisTpNm());
+        existing.setAisTpCd(newData.getAisTpCd());
+        existing.setAisTpCdNm(newData.getAisTpCdNm());
+        existing.setPanSs(newData.getPanSs());
+        existing.setAllCnt(newData.getAllCnt());
+    }
+
+    /**
+     * HousingComplex 업데이트
+     */
+    private void updateHousingComplex(HousingComplex existing, HousingComplex newData) {
+        existing.setHsmpNm(newData.getHsmpNm());
+        existing.setInsttNm(newData.getInsttNm());
+        existing.setBrtcCode(newData.getBrtcCode());
+        existing.setBrtcNm(newData.getBrtcNm());
+        existing.setSignguCode(newData.getSignguCode());
+        existing.setSignguNm(newData.getSignguNm());
+        existing.setRnAdres(newData.getRnAdres());
+        existing.setPnu(newData.getPnu());
+        existing.setCompetDe(newData.getCompetDe());
+        existing.setCompleteDate(newData.getCompleteDate());
+        existing.setHshldCo(newData.getHshldCo());
+        existing.setTotalUnits(newData.getTotalUnits());
+        existing.setSuplyTyNm(newData.getSuplyTyNm());
+        existing.setStyleNm(newData.getStyleNm());
+        existing.setSuplyPrvuseAr(newData.getSuplyPrvuseAr());
+        existing.setSupplyArea(newData.getSupplyArea());
+        existing.setSuplyCmnuseAr(newData.getSuplyCmnuseAr());
+        existing.setHouseTyNm(newData.getHouseTyNm());
+        existing.setHeatMthdDetailNm(newData.getHeatMthdDetailNm());
+        existing.setBuldStleNm(newData.getBuldStleNm());
+        existing.setElvtrInstlAtNm(newData.getElvtrInstlAtNm());
+        existing.setElevator(newData.getElevator());
+        existing.setParkngCo(newData.getParkngCo());
+        existing.setParkingSpaces(newData.getParkingSpaces());
+        existing.setBassRentGtn(newData.getBassRentGtn());
+        existing.setDeposit(newData.getDeposit());
+        existing.setBassMtRntchrg(newData.getBassMtRntchrg());
+        existing.setMonthlyRent(newData.getMonthlyRent());
+        existing.setBassCnvrsGtnLmt(newData.getBassCnvrsGtnLmt());
+        existing.setLatitude(newData.getLatitude());
+        existing.setLongitude(newData.getLongitude());
+    }
+
+    /**
+     * 공고문 데이터만으로 Housing 엔티티 생성 및 DB에 저장 (트랜잭션 적용)
+     * @deprecated 새로운 구조에서는 saveNoticeData 사용
+     */
+    @Deprecated
     @Transactional
     private void saveNoticeDataOnly(
             Map<String, LHRentalNoticeResponse.Item> noticeMapByHsmpSn,
@@ -1429,6 +1857,188 @@ public class HousingSyncService {
         }
         
         return bestMatch;
+    }
+
+    /**
+     * housing_complex와 housing_notice 간 매칭 통계 수집
+     * @return 매칭 통계 정보
+     */
+    public Map<String, Object> getMatchingStatistics() {
+        Map<String, Object> stats = new HashMap<>();
+        
+        // 모든 데이터 가져오기
+        List<HousingComplex> complexes = housingComplexRepository.findAll();
+        List<HousingNotice> notices = housingNoticeRepository.findAll();
+        
+        System.out.println("=== 매칭 통계 수집 시작 ===");
+        System.out.println("단지정보 개수: " + complexes.size());
+        System.out.println("공고문 개수: " + notices.size());
+        
+        // 디버깅: 샘플 데이터 확인
+        if (!complexes.isEmpty()) {
+            HousingComplex sampleComplex = complexes.get(0);
+            System.out.println("샘플 단지정보 - complexId: " + sampleComplex.getComplexId() + ", hsmpNm: " + sampleComplex.getHsmpNm());
+        }
+        if (!notices.isEmpty()) {
+            HousingNotice sampleNotice = notices.get(0);
+            System.out.println("샘플 공고문 - noticeId: " + sampleNotice.getNoticeId() + ", hsmpSn: " + sampleNotice.getHsmpSn() + ", hsmpNm: " + sampleNotice.getHsmpNm());
+        }
+        
+        // 통계 변수
+        int matchedByHsmpSn = 0; // hsmpSn으로 정확히 매칭된 건수
+        int matchedByHsmpNmExact = 0; // hsmpNm으로 정확히 일치한 건수
+        int matchedByHsmpNmNormalized = 0; // 정규화된 이름으로 일치한 건수
+        int matchedByFuzzy = 0; // 퍼지 매칭(유사도 0.8 이상)으로 매칭된 건수
+        int unmatchedComplexes = 0; // 매칭되지 않은 단지정보 건수
+        int unmatchedNotices = 0; // 매칭되지 않은 공고문 건수
+        
+        // 매칭된 공고문 추적 (중복 매칭 방지)
+        Set<String> matchedNoticeIds = new HashSet<>();
+        
+        // 공고문을 Map으로 변환 (매칭용)
+        Map<String, HousingNotice> noticeMapByHsmpSn = new HashMap<>();
+        Map<String, HousingNotice> noticeMapByHsmpNm = new HashMap<>();
+        
+        for (HousingNotice notice : notices) {
+            if (notice.getHsmpSn() != null && !notice.getHsmpSn().isEmpty()) {
+                // 가장 최신 공고문만 유지 (같은 hsmpSn에 여러 공고문이 있을 수 있음)
+                String key = notice.getHsmpSn();
+                if (!noticeMapByHsmpSn.containsKey(key) || 
+                    (notice.getApplicationStart() != null && 
+                     noticeMapByHsmpSn.get(key).getApplicationStart() != null &&
+                     notice.getApplicationStart().after(noticeMapByHsmpSn.get(key).getApplicationStart()))) {
+                    noticeMapByHsmpSn.put(key, notice);
+                }
+            }
+            if (notice.getHsmpNm() != null && !notice.getHsmpNm().isEmpty()) {
+                String key = notice.getHsmpNm();
+                if (!noticeMapByHsmpNm.containsKey(key) || 
+                    (notice.getApplicationStart() != null && 
+                     noticeMapByHsmpNm.get(key).getApplicationStart() != null &&
+                     notice.getApplicationStart().after(noticeMapByHsmpNm.get(key).getApplicationStart()))) {
+                    noticeMapByHsmpNm.put(key, notice);
+                }
+            }
+        }
+        
+        System.out.println("공고문 Map 크기 - hsmpSn: " + noticeMapByHsmpSn.size() + ", hsmpNm: " + noticeMapByHsmpNm.size());
+        
+        // 디버깅: 실제 데이터 확인 (처음 5개씩)
+        System.out.println("처음 5개 단지정보:");
+        int complexCount = 0;
+        for (HousingComplex complex : complexes) {
+            if (complexCount++ >= 5) break;
+            System.out.println("  - complexId: '" + complex.getComplexId() + "', hsmpNm: '" + complex.getHsmpNm() + "'");
+        }
+        
+        System.out.println("처음 5개 공고문:");
+        int noticeCount = 0;
+        for (HousingNotice notice : notices) {
+            if (noticeCount++ >= 5) break;
+            System.out.println("  - noticeId: '" + notice.getNoticeId() + "', hsmpSn: '" + notice.getHsmpSn() + "', hsmpNm: '" + notice.getHsmpNm() + "'");
+        }
+        
+        // 단지정보 기준으로 매칭 수행
+        for (HousingComplex complex : complexes) {
+            String complexId = complex.getComplexId();
+            String complexName = complex.getHsmpNm();
+            
+            HousingNotice matchedNotice = null;
+            
+            // 1순위: hsmpSn으로 정확히 매칭
+            if (complexId != null && noticeMapByHsmpSn.containsKey(complexId)) {
+                matchedNotice = noticeMapByHsmpSn.get(complexId);
+                matchedByHsmpSn++;
+            }
+            // 2순위: hsmpNm으로 정확히 일치
+            else if (complexName != null && noticeMapByHsmpNm.containsKey(complexName)) {
+                matchedNotice = noticeMapByHsmpNm.get(complexName);
+                matchedByHsmpNmExact++;
+            }
+            // 3순위: 정규화된 이름으로 일치
+            else if (complexName != null) {
+                String normalizedComplexName = normalizeHousingName(complexName);
+                for (Map.Entry<String, HousingNotice> entry : noticeMapByHsmpNm.entrySet()) {
+                    String noticeName = entry.getKey();
+                    String normalizedNoticeName = normalizeHousingName(noticeName);
+                    
+                    if (normalizedComplexName.equals(normalizedNoticeName)) {
+                        matchedNotice = entry.getValue();
+                        matchedByHsmpNmNormalized++;
+                        break;
+                    }
+                }
+            }
+            // 4순위: 퍼지 매칭 (유사도 0.8 이상)
+            if (matchedNotice == null && complexName != null) {
+                double bestSimilarity = 0.0;
+                HousingNotice bestMatch = null;
+                
+                for (Map.Entry<String, HousingNotice> entry : noticeMapByHsmpNm.entrySet()) {
+                    String noticeName = entry.getKey();
+                    double similarity = calculateSimilarity(complexName, noticeName);
+                    
+                    if (similarity >= 0.8 && similarity > bestSimilarity) {
+                        bestSimilarity = similarity;
+                        bestMatch = entry.getValue();
+                    }
+                }
+                
+                if (bestMatch != null) {
+                    matchedNotice = bestMatch;
+                    matchedByFuzzy++;
+                }
+            }
+            
+            // 매칭된 공고문 추적
+            if (matchedNotice != null) {
+                matchedNoticeIds.add(matchedNotice.getNoticeId());
+            } else {
+                unmatchedComplexes++;
+            }
+        }
+        
+        // 매칭되지 않은 공고문 개수
+        unmatchedNotices = (int) notices.stream()
+                .filter(notice -> !matchedNoticeIds.contains(notice.getNoticeId()))
+                .count();
+        
+        // 총 매칭 건수
+        int totalMatched = matchedByHsmpSn + matchedByHsmpNmExact + matchedByHsmpNmNormalized + matchedByFuzzy;
+        
+        // 통계 저장
+        stats.put("totalComplexes", complexes.size());
+        stats.put("totalNotices", notices.size());
+        stats.put("totalMatched", totalMatched);
+        stats.put("matchedByHsmpSn", matchedByHsmpSn);
+        stats.put("matchedByHsmpNmExact", matchedByHsmpNmExact);
+        stats.put("matchedByHsmpNmNormalized", matchedByHsmpNmNormalized);
+        stats.put("matchedByFuzzy", matchedByFuzzy);
+        stats.put("unmatchedComplexes", unmatchedComplexes);
+        stats.put("unmatchedNotices", unmatchedNotices);
+        
+        // 매칭률 계산
+        if (complexes.size() > 0) {
+            double matchRate = (totalMatched * 100.0) / complexes.size();
+            stats.put("matchRate", String.format("%.2f%%", matchRate));
+        }
+        
+        if (notices.size() > 0) {
+            double noticeMatchRate = (totalMatched * 100.0) / notices.size();
+            stats.put("noticeMatchRate", String.format("%.2f%%", noticeMatchRate));
+        }
+        
+        System.out.println("=== 매칭 통계 결과 ===");
+        System.out.println("총 매칭 건수: " + totalMatched);
+        System.out.println("  - hsmpSn 매칭: " + matchedByHsmpSn);
+        System.out.println("  - hsmpNm 정확 매칭: " + matchedByHsmpNmExact);
+        System.out.println("  - hsmpNm 정규화 매칭: " + matchedByHsmpNmNormalized);
+        System.out.println("  - 퍼지 매칭: " + matchedByFuzzy);
+        System.out.println("매칭되지 않은 단지정보: " + unmatchedComplexes);
+        System.out.println("매칭되지 않은 공고문: " + unmatchedNotices);
+        System.out.println("====================");
+        
+        return stats;
     }
 }
 

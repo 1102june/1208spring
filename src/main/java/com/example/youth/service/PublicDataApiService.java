@@ -176,8 +176,31 @@ public class PublicDataApiService {
                                     
                                     // JSON 파싱 시도
                                     try {
+                                        // 응답이 비어있는지 확인
+                                        if (responseBody == null || responseBody.trim().isEmpty()) {
+                                            System.err.println("⚠️ 단지정보 API 응답이 비어있습니다.");
+                                            return new LHRentalHouseListResponse();
+                                        }
+                                        
+                                        // 응답 길이 제한 확인 (너무 긴 응답은 문제일 수 있음)
+                                        if (responseBody.length() > 10_000_000) { // 10MB 제한
+                                            System.err.println("⚠️ 단지정보 API 응답이 너무 큽니다: " + responseBody.length() + " bytes");
+                                            System.err.println("⚠️ 응답 처음 1000자: " + responseBody.substring(0, 1000));
+                                        }
+                                        
+                                        // JSON 응답에서 빈 객체 {}를 null로 변환 (competDe, heatMthdDetailNm 등)
+                                        // LH API가 일부 필드를 빈 객체로 반환하는 문제 해결
+                                        String cleanedResponseBody = preprocessJsonResponse(responseBody);
+                                        
                                         ObjectMapper objectMapper = new ObjectMapper();
-                                        LHRentalHouseListResponse result = objectMapper.readValue(responseBody, LHRentalHouseListResponse.class);
+                                        // FAIL_ON_UNKNOWN_PROPERTIES를 false로 설정 (이미 Item에 @JsonIgnoreProperties 있음)
+                                        objectMapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+                                        // FAIL_ON_INVALID_SUBTYPE도 false로 설정
+                                        objectMapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_INVALID_SUBTYPE, false);
+                                        // 빈 객체를 null로 처리하도록 설정
+                                        objectMapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
+                                        
+                                        LHRentalHouseListResponse result = objectMapper.readValue(cleanedResponseBody, LHRentalHouseListResponse.class);
                                         
                                         // 응답 코드 확인 (새 형식: code, 기존 형식: response.header.resultCode)
                                         String resultCode = null;
@@ -199,7 +222,6 @@ public class PublicDataApiService {
                                         if (resultCode != null && !resultCode.equals("000") && !resultCode.equals("00")) {
                                             System.err.println("⚠️ 단지정보 API 응답 에러 코드: " + resultCode);
                                             System.err.println("⚠️ 단지정보 API 응답 에러 메시지: " + resultMsg);
-                                            System.err.println("⚠️ 단지정보 API 전체 응답 본문: " + responseBody);
                                             // 에러 응답이면 예외 발생
                                             throw new RuntimeException("단지정보 API 에러: " + resultCode + " - " + resultMsg);
                                         }
@@ -210,13 +232,35 @@ public class PublicDataApiService {
                                         // 데이터가 없는 것은 정상일 수 있음 (해당 지역에 데이터가 없을 수 있음)
                                         
                                         return result;
-                                    } catch (Exception e) {
-                                        System.err.println("JSON 파싱 실패. 응답 내용: " + 
-                                            (responseBody != null && responseBody.length() > 1000 
-                                                ? responseBody.substring(0, 1000) 
+                                    } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                                        // JSON 파싱 오류 상세 정보 출력
+                                        System.err.println("❌ JSON 파싱 오류: " + e.getMessage());
+                                        System.err.println("❌ 오류 위치: " + e.getLocation());
+                                        System.err.println("❌ 응답 처음 2000자: " + 
+                                            (responseBody != null && responseBody.length() > 2000 
+                                                ? responseBody.substring(0, 2000) 
                                                 : responseBody));
-                                        System.err.println("전체 응답 본문: " + responseBody);
-                                        throw new RuntimeException("API 응답 파싱 실패: " + e.getMessage(), e);
+                                        // JSON 형식 검증을 위해 전체 응답도 출력 (길이 제한)
+                                        if (responseBody != null && responseBody.length() < 10000) {
+                                            System.err.println("❌ 전체 응답 본문: " + responseBody);
+                                        } else if (responseBody != null) {
+                                            System.err.println("❌ 응답 끝부분 2000자: " + responseBody.substring(Math.max(0, responseBody.length() - 2000)));
+                                        }
+                                        // 빈 응답 반환하여 처리 계속
+                                        System.err.println("⚠️ JSON 파싱 실패로 인해 빈 응답을 반환합니다.");
+                                        return new LHRentalHouseListResponse();
+                                    } catch (Exception e) {
+                                        System.err.println("❌ JSON 파싱 실패 (기타 오류): " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                                        if (e.getCause() != null) {
+                                            System.err.println("❌ 원인: " + e.getCause().getClass().getSimpleName() + " - " + e.getCause().getMessage());
+                                        }
+                                        System.err.println("❌ 응답 처음 2000자: " + 
+                                            (responseBody != null && responseBody.length() > 2000 
+                                                ? responseBody.substring(0, 2000) 
+                                                : responseBody));
+                                        // 빈 응답 반환하여 처리 계속
+                                        System.err.println("⚠️ 오류로 인해 빈 응답을 반환합니다.");
+                                        return new LHRentalHouseListResponse();
                                     }
                                 });
                     } else {
@@ -249,6 +293,34 @@ public class PublicDataApiService {
         return getLHRentalHouseList(1, 1000, brtcCode, signguCode, null);
     }
 
+
+    /**
+     * JSON 응답에서 빈 객체 {}를 null로 변환하여 파싱 오류 방지
+     * LH API가 일부 필드를 빈 객체로 반환하는 문제 해결
+     */
+    private String preprocessJsonResponse(String jsonResponse) {
+        if (jsonResponse == null || jsonResponse.isEmpty()) {
+            return jsonResponse;
+        }
+        
+        // 빈 객체 {}를 null로 변환 (String 필드에 대해서만)
+        // 패턴: "fieldName":{}  -> "fieldName":null
+        // 주의: 숫자나 다른 값에 영향을 주지 않도록 주의
+        String processed = jsonResponse;
+        
+        // 일반적인 String 필드들이 빈 객체로 오는 경우 처리
+        // 정규표현식으로 "필드명":{} 패턴을 "필드명":null로 변경
+        // 주의: 값의 컨텍스트를 확인하여 안전하게 처리
+        processed = processed.replaceAll("\"competDe\":\\s*\\{\\s*\\}", "\"competDe\":null");
+        processed = processed.replaceAll("\"heatMthdDetailNm\":\\s*\\{\\s*\\}", "\"heatMthdDetailNm\":null");
+        processed = processed.replaceAll("\"buldStleNm\":\\s*\\{\\s*\\}", "\"buldStleNm\":null");
+        processed = processed.replaceAll("\"elvtrInstlAtNm\":\\s*\\{\\s*\\}", "\"elvtrInstlAtNm\":null");
+        processed = processed.replaceAll("\"houseTyNm\":\\s*\\{\\s*\\}", "\"houseTyNm\":null");
+        processed = processed.replaceAll("\"styleNm\":\\s*\\{\\s*\\}", "\"styleNm\":null");
+        processed = processed.replaceAll("\"bassCnvrsGtnLmt\":\\s*\\{\\s*\\}", "\"bassCnvrsGtnLmt\":null");
+        
+        return processed;
+    }
 
     /**
      * LH 분양임대공고문 조회
@@ -379,7 +451,17 @@ public class PublicDataApiService {
                                     // JSON 파싱 시도
                                     // 실제 API 응답은 배열로 시작: [{"dsSch":[...]}, {"dsList":[...]}]
                                     try {
+                                        // 응답이 비어있는지 확인
+                                        if (responseBody == null || responseBody.trim().isEmpty()) {
+                                            System.err.println("⚠️ 공고문 API 응답이 비어있습니다.");
+                                            return new LHRentalNoticeResponse();
+                                        }
+                                        
                                         ObjectMapper objectMapper = new ObjectMapper();
+                                        // FAIL_ON_UNKNOWN_PROPERTIES를 false로 설정
+                                        objectMapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+                                        objectMapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_INVALID_SUBTYPE, false);
+                                        
                                         // 배열로 파싱
                                         List<Object> responseArray = objectMapper.readValue(responseBody, List.class);
                                         
@@ -390,14 +472,33 @@ public class PublicDataApiService {
                                             return objectMapper.readValue(secondElementJson, LHRentalNoticeResponse.class);
                                         } else {
                                             // 배열이 아니거나 요소가 부족한 경우 빈 응답 반환
+                                            System.err.println("⚠️ 공고문 API 응답 배열 형식이 예상과 다릅니다. 배열 크기: " + 
+                                                (responseArray != null ? responseArray.size() : 0));
                                             return new LHRentalNoticeResponse();
                                         }
-                                    } catch (Exception e) {
-                                        System.err.println("공고문 API JSON 파싱 실패. 응답 내용: " + 
-                                            (responseBody != null && responseBody.length() > 1000 
-                                                ? responseBody.substring(0, 1000) 
+                                    } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                                        // JSON 파싱 오류 상세 정보 출력
+                                        System.err.println("❌ 공고문 API JSON 파싱 오류: " + e.getMessage());
+                                        System.err.println("❌ 오류 위치: " + e.getLocation());
+                                        System.err.println("❌ 응답 처음 2000자: " + 
+                                            (responseBody != null && responseBody.length() > 2000 
+                                                ? responseBody.substring(0, 2000) 
                                                 : responseBody));
-                                        throw new RuntimeException("공고문 API 응답 파싱 실패: " + e.getMessage(), e);
+                                        // 빈 응답 반환하여 처리 계속
+                                        System.err.println("⚠️ JSON 파싱 실패로 인해 빈 응답을 반환합니다.");
+                                        return new LHRentalNoticeResponse();
+                                    } catch (Exception e) {
+                                        System.err.println("❌ 공고문 API JSON 파싱 실패 (기타 오류): " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                                        if (e.getCause() != null) {
+                                            System.err.println("❌ 원인: " + e.getCause().getClass().getSimpleName() + " - " + e.getCause().getMessage());
+                                        }
+                                        System.err.println("❌ 응답 처음 2000자: " + 
+                                            (responseBody != null && responseBody.length() > 2000 
+                                                ? responseBody.substring(0, 2000) 
+                                                : responseBody));
+                                        // 빈 응답 반환하여 처리 계속
+                                        System.err.println("⚠️ 오류로 인해 빈 응답을 반환합니다.");
+                                        return new LHRentalNoticeResponse();
                                     }
                                 });
                     } else {

@@ -1,16 +1,19 @@
 package com.example.youth.service;
 
 import com.example.youth.DB.Housing;
+import com.example.youth.DB.HousingNotice;
+import com.example.youth.DB.HousingComplex;
 import com.example.youth.dto.HousingResponse;
 import com.example.youth.repository.BookmarkRepository;
 import com.example.youth.repository.HousingRepository;
+import com.example.youth.repository.HousingNoticeRepository;
+import com.example.youth.repository.HousingComplexRepository;
 import com.example.youth.common.ContentType;
 import com.example.youth.DB.ActiveStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -37,17 +40,98 @@ class DistanceCalculator {
 public class HousingService {
 
     @Autowired
-    private HousingRepository housingRepository;
+    private HousingRepository housingRepository; // 기존 호환성 유지용 (deprecated)
+
+    @Autowired
+    private HousingNoticeRepository housingNoticeRepository;
+
+    @Autowired
+    private HousingComplexRepository housingComplexRepository;
 
     @Autowired
     private BookmarkRepository bookmarkRepository;
 
-    // 임대주택을 HousingResponse로 변환 (북마크 여부 포함)
+    /**
+     * HousingNotice와 HousingComplex를 병합하여 HousingResponse로 변환
+     */
+    private HousingResponse convertToResponse(HousingNotice notice, HousingComplex complex, String userId, Double userLat, Double userLon) {
+        // housingId는 complex의 complexId를 우선 사용, 없으면 notice의 noticeId 사용
+        String housingId = (complex != null && complex.getComplexId() != null) 
+                ? complex.getComplexId() 
+                : (notice != null ? notice.getNoticeId() : null);
+        
+        // 북마크 여부 확인
+        boolean isBookmarked = false;
+        if (housingId != null && userId != null) {
+            isBookmarked = bookmarkRepository
+                    .findByUser_UserIdAndContentTypeAndContentId(userId, ContentType.housing, housingId)
+                    .map(bookmark -> bookmark.getIsActive() == ActiveStatus.Y)
+                    .orElse(false);
+        }
+
+        HousingResponse.HousingResponseBuilder builder = HousingResponse.builder()
+                .housingId(housingId)
+                .isBookmarked(isBookmarked);
+        
+        // 단지명: complex 우선, 없으면 notice
+        String name = (complex != null && complex.getHsmpNm() != null) 
+                ? complex.getHsmpNm() 
+                : (notice != null ? notice.getHsmpNm() : null);
+        builder.name(name);
+        
+        // 주소: complex에서 가져옴
+        builder.address(complex != null ? complex.getRnAdres() : null);
+        
+        // 단지정보 (complex) 필드들
+        if (complex != null) {
+            builder.supplyArea(complex.getSupplyArea())
+                   .completeDate(complex.getCompleteDate())
+                   .organization(complex.getInsttNm())
+                   .heatingType(complex.getHeatMthdDetailNm())
+                   .elevator(complex.getElevator())
+                   .parkingSpaces(complex.getParkingSpaces())
+                   .deposit(complex.getDeposit())
+                   .monthlyRent(complex.getMonthlyRent())
+                   .totalUnits(complex.getTotalUnits())
+                   .latitude(complex.getLatitude())
+                   .longitude(complex.getLongitude())
+                   .housingType(complex.getSuplyTyNm());
+        }
+        
+        // 공고문 (notice) 필드들
+        if (notice != null) {
+            builder.applicationStart(notice.getApplicationStart())
+                   .applicationEnd(notice.getApplicationEnd())
+                   .link(notice.getDtlUrl());
+            
+            // 단지정보에 없는 필드만 공고문에서 채움
+            if (builder.build().getHousingType() == null && notice.getAisTpCdNm() != null) {
+                builder.housingType(notice.getAisTpCdNm());
+            }
+        }
+        
+        HousingResponse response = builder.build();
+        
+        // 사용자 위치가 제공된 경우 거리 계산
+        if (userLat != null && userLon != null && 
+            response.getLatitude() != null && response.getLongitude() != null) {
+            double distance = DistanceCalculator.calculateDistance(
+                    userLat, userLon, 
+                    response.getLatitude(), response.getLongitude()
+            );
+            response.setDistanceFromUser(distance);
+        }
+        
+        return response;
+    }
+    
+    // 기존 Housing 엔티티 변환 (호환성 유지용)
+    @Deprecated
     private HousingResponse convertToResponse(Housing housing, String userId) {
         return convertToResponse(housing, userId, null, null);
     }
     
-    // 임대주택을 HousingResponse로 변환 (거리 계산 포함)
+    @Deprecated
     private HousingResponse convertToResponse(Housing housing, String userId, Double userLat, Double userLon) {
         boolean isBookmarked = bookmarkRepository
                 .findByUser_UserIdAndContentTypeAndContentId(userId, ContentType.housing, housing.getHousingId())
@@ -88,28 +172,103 @@ public class HousingService {
         return builder.build();
     }
 
+    /**
+     * 두 테이블을 병합하여 조회하는 헬퍼 메서드
+     */
+    private List<HousingResponse> mergeNoticesAndComplexes(
+            List<HousingNotice> notices, 
+            List<HousingComplex> complexes, 
+            String userId, 
+            Double userLat, 
+            Double userLon) {
+        
+        // hsmpSn 또는 hsmpNm으로 매칭
+        Map<String, HousingNotice> noticeMap = new HashMap<>();
+        Map<String, HousingComplex> complexMap = new HashMap<>();
+        
+        // 공고문을 hsmpSn 또는 hsmpNm으로 매핑
+        for (HousingNotice notice : notices) {
+            if (notice.getHsmpSn() != null && !notice.getHsmpSn().isEmpty()) {
+                noticeMap.put(notice.getHsmpSn(), notice);
+            } else if (notice.getHsmpNm() != null && !notice.getHsmpNm().isEmpty()) {
+                noticeMap.put(notice.getHsmpNm(), notice);
+            }
+        }
+        
+        // 단지정보를 complexId(hsmpSn) 또는 hsmpNm으로 매핑
+        for (HousingComplex complex : complexes) {
+            if (complex.getComplexId() != null) {
+                complexMap.put(complex.getComplexId(), complex);
+            }
+            if (complex.getHsmpNm() != null && !complex.getHsmpNm().isEmpty()) {
+                complexMap.put(complex.getHsmpNm(), complex);
+            }
+        }
+        
+        // 모든 단지정보를 기준으로 병합 (단지정보가 있으면 공고문과 매칭)
+        Set<String> processedIds = new HashSet<>();
+        List<HousingResponse> result = new ArrayList<>();
+        
+        // 단지정보 기준으로 병합
+        for (HousingComplex complex : complexes) {
+            String key = complex.getComplexId() != null ? complex.getComplexId() : complex.getHsmpNm();
+            if (key == null || processedIds.contains(key)) continue;
+            
+            HousingNotice matchedNotice = noticeMap.get(complex.getComplexId());
+            if (matchedNotice == null && complex.getHsmpNm() != null) {
+                matchedNotice = noticeMap.get(complex.getHsmpNm());
+            }
+            
+            result.add(convertToResponse(matchedNotice, complex, userId, userLat, userLon));
+            processedIds.add(key);
+        }
+        
+        // 공고문만 있고 단지정보가 없는 경우
+        for (HousingNotice notice : notices) {
+            String key = notice.getHsmpSn() != null ? notice.getHsmpSn() : notice.getHsmpNm();
+            if (key == null || processedIds.contains(key)) continue;
+            
+            if (!complexMap.containsKey(key)) {
+                result.add(convertToResponse(notice, null, userId, userLat, userLon));
+                processedIds.add(key);
+            }
+        }
+        
+        return result;
+    }
+
     // ID로 임대주택 조회
     public HousingResponse getHousingById(String housingId, String userId) {
-        Housing housing = housingRepository.findById(housingId)
-                .orElseThrow(() -> new RuntimeException("임대주택을 찾을 수 없습니다: " + housingId));
-        return convertToResponse(housing, userId);
+        // 먼저 단지정보에서 조회
+        Optional<HousingComplex> complexOpt = housingComplexRepository.findById(housingId);
+        HousingComplex complex = complexOpt.orElse(null);
+        
+        // 공고문에서 조회 (hsmpSn 또는 hsmpNm으로)
+        List<HousingNotice> notices = housingNoticeRepository.findByIdentifier(housingId);
+        HousingNotice notice = notices.isEmpty() ? null : notices.get(0);
+        
+        if (complex == null && notice == null) {
+            throw new RuntimeException("임대주택을 찾을 수 없습니다: " + housingId);
+        }
+        
+        return convertToResponse(notice, complex, userId, null, null);
     }
 
     // 활성 임대주택 목록 조회
     public List<HousingResponse> getActiveHousing(String userId) {
         Date currentDate = new Date();
-        List<Housing> housingList = housingRepository.findActiveHousing(currentDate);
-        return housingList.stream()
-                .map(housing -> convertToResponse(housing, userId))
-                .collect(Collectors.toList());
+        List<HousingNotice> activeNotices = housingNoticeRepository.findActiveNotices(currentDate);
+        List<HousingComplex> allComplexes = housingComplexRepository.findAll();
+        
+        return mergeNoticesAndComplexes(activeNotices, allComplexes, userId, null, null);
     }
 
     // 지역별 임대주택 조회
     public List<HousingResponse> getHousingByRegion(String region, String userId) {
-        List<Housing> housingList = housingRepository.findHousingByRegion(region);
-        return housingList.stream()
-                .map(housing -> convertToResponse(housing, userId))
-                .collect(Collectors.toList());
+        List<HousingComplex> complexes = housingComplexRepository.findByRegion(region);
+        List<HousingNotice> allNotices = housingNoticeRepository.findAll();
+        
+        return mergeNoticesAndComplexes(allNotices, complexes, userId, null, null);
     }
     
     /**
@@ -129,12 +288,15 @@ public class HousingService {
             Integer limit) {
         
         Date currentDate = new Date();
-        List<Housing> activeHousing = housingRepository.findActiveHousing(currentDate);
+        List<HousingNotice> activeNotices = housingNoticeRepository.findActiveNotices(currentDate);
+        List<HousingComplex> allComplexes = housingComplexRepository.findAll();
+        
+        List<HousingResponse> merged = mergeNoticesAndComplexes(activeNotices, allComplexes, userId, userLat, userLon);
         
         int searchRadius = radius != null ? radius : 5000; // 기본 5km
         int maxResults = limit != null ? limit : 50;
         
-        return activeHousing.stream()
+        return merged.stream()
                 .filter(housing -> {
                     // 좌표가 있는 경우만 필터링
                     if (housing.getLatitude() == null || housing.getLongitude() == null) {
@@ -150,7 +312,6 @@ public class HousingService {
                     }
                     return true;
                 })
-                .map(housing -> convertToResponse(housing, userId, userLat, userLon))
                 .sorted((h1, h2) -> {
                     // 거리순 정렬 (거리가 가까운 순)
                     if (h1.getDistanceFromUser() == null && h2.getDistanceFromUser() == null) {
@@ -168,9 +329,19 @@ public class HousingService {
      * ID로 임대주택 상세 조회 (거리 계산 포함)
      */
     public HousingResponse getHousingDetail(String housingId, String userId, Double userLat, Double userLon) {
-        Housing housing = housingRepository.findById(housingId)
-                .orElseThrow(() -> new RuntimeException("임대주택을 찾을 수 없습니다: " + housingId));
-        return convertToResponse(housing, userId, userLat, userLon);
+        // 먼저 단지정보에서 조회
+        Optional<HousingComplex> complexOpt = housingComplexRepository.findById(housingId);
+        HousingComplex complex = complexOpt.orElse(null);
+        
+        // 공고문에서 조회 (hsmpSn 또는 hsmpNm으로)
+        List<HousingNotice> notices = housingNoticeRepository.findByIdentifier(housingId);
+        HousingNotice notice = notices.isEmpty() ? null : notices.get(0);
+        
+        if (complex == null && notice == null) {
+            throw new RuntimeException("임대주택을 찾을 수 없습니다: " + housingId);
+        }
+        
+        return convertToResponse(notice, complex, userId, userLat, userLon);
     }
 }
 
