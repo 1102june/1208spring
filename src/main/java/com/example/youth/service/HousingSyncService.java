@@ -1684,14 +1684,29 @@ public class HousingSyncService {
         existing.setDeposit(newData.getDeposit());
         existing.setMonthlyRent(newData.getMonthlyRent());
         existing.setTotalUnits(newData.getTotalUnits());
-        existing.setLink(newData.getLink());
+        // link: 무조건 값이 있어야 함 (null이면 기본값)
+        if (newData.getLink() != null && !newData.getLink().isEmpty()) {
+            existing.setLink(newData.getLink());
+        } else if (existing.getLink() == null || existing.getLink().isEmpty()) {
+            existing.setLink("https://apply.lh.or.kr/");
+        }
+        
         existing.setHousingType(newData.getHousingType());
+        
         // 신청 기간 업데이트
         if (newData.getApplicationStart() != null) {
             existing.setApplicationStart(newData.getApplicationStart());
+        } else if (existing.getApplicationStart() == null) {
+            existing.setApplicationStart(new Date(System.currentTimeMillis()));
         }
+        
+        // applicationEnd: 무조건 값이 있어야 함 (null이면 기본값)
         if (newData.getApplicationEnd() != null) {
             existing.setApplicationEnd(newData.getApplicationEnd());
+        } else if (existing.getApplicationEnd() == null) {
+            // 기본값: 1년 후
+            long oneYearLater = System.currentTimeMillis() + (365L * 24 * 60 * 60 * 1000);
+            existing.setApplicationEnd(new Date(oneYearLater));
         }
         // 좌표는 주소가 변경된 경우에만 업데이트
         if (newData.getLatitude() != null && newData.getLongitude() != null) {
@@ -2039,6 +2054,480 @@ public class HousingSyncService {
         System.out.println("====================");
         
         return stats;
+    }
+
+    /**
+     * DB의 housing_notice와 housing_complex 테이블을 매칭하여 housing 테이블에 저장
+     * 공고명에서 단지명 추출 및 퍼지 매칭을 포함한 다양한 매칭 전략 사용
+     */
+    @Transactional
+    public void matchAndSaveHousingData() {
+        System.out.println("========================================");
+        System.out.println("housing_notice와 housing_complex 매칭 시작");
+        System.out.println("========================================");
+        
+        // 모든 데이터 가져오기
+        List<HousingComplex> complexes = housingComplexRepository.findAll();
+        List<HousingNotice> notices = housingNoticeRepository.findAll();
+        
+        System.out.println("단지정보 개수: " + complexes.size());
+        System.out.println("공고문 개수: " + notices.size());
+        
+        // 공고문을 Map으로 변환 (매칭용)
+        // 1. hsmpSn으로 매핑 (있는 경우)
+        Map<String, HousingNotice> noticeMapByHsmpSn = new HashMap<>();
+        // 2. hsmpNm으로 매핑 (있는 경우)
+        Map<String, HousingNotice> noticeMapByHsmpNm = new HashMap<>();
+        // 3. 공고명에서 추출한 단지명으로 매핑
+        Map<String, HousingNotice> noticeMapByExtractedName = new HashMap<>();
+        // 4. 지역명 + 공고명 조합으로 매핑
+        Map<String, HousingNotice> noticeMapByRegionAndName = new HashMap<>();
+        
+        for (HousingNotice notice : notices) {
+            // hsmpSn으로 매핑
+            if (notice.getHsmpSn() != null && !notice.getHsmpSn().isEmpty()) {
+                noticeMapByHsmpSn.put(notice.getHsmpSn(), notice);
+            }
+            
+            // hsmpNm으로 매핑
+            if (notice.getHsmpNm() != null && !notice.getHsmpNm().isEmpty()) {
+                noticeMapByHsmpNm.put(notice.getHsmpNm(), notice);
+            }
+            
+            // 공고명에서 단지명 추출
+            if (notice.getPanNm() != null && !notice.getPanNm().isEmpty()) {
+                String extractedName = extractComplexNameFromNoticeName(notice.getPanNm());
+                if (extractedName != null && !extractedName.isEmpty()) {
+                    noticeMapByExtractedName.put(extractedName, notice);
+                    // 정규화된 이름도 추가
+                    String normalizedExtracted = normalizeHousingName(extractedName);
+                    if (!normalizedExtracted.equals(normalizeHousingName(extractedName))) {
+                        noticeMapByExtractedName.put(normalizedExtracted, notice);
+                    }
+                }
+                
+                // 지역명 + 공고명 조합
+                if (notice.getCnpCdNm() != null && !notice.getCnpCdNm().isEmpty() && extractedName != null) {
+                    String regionAndName = notice.getCnpCdNm() + " " + extractedName;
+                    noticeMapByRegionAndName.put(regionAndName, notice);
+                }
+            }
+        }
+        
+        System.out.println("공고문 Map 크기:");
+        System.out.println("  - hsmpSn: " + noticeMapByHsmpSn.size());
+        System.out.println("  - hsmpNm: " + noticeMapByHsmpNm.size());
+        System.out.println("  - 추출된 단지명: " + noticeMapByExtractedName.size());
+        System.out.println("  - 지역명+단지명: " + noticeMapByRegionAndName.size());
+        
+        int savedCount = 0;
+        int updatedCount = 0;
+        int matchedCount = 0;
+        
+        // 단지정보 기준으로 매칭 및 저장
+        for (HousingComplex complex : complexes) {
+            try {
+                HousingNotice matchedNotice = null;
+                
+                // 1순위: hsmpSn으로 정확히 매칭
+                if (complex.getComplexId() != null && noticeMapByHsmpSn.containsKey(complex.getComplexId())) {
+                    matchedNotice = noticeMapByHsmpSn.get(complex.getComplexId());
+                }
+                // 2순위: hsmpNm으로 정확히 일치
+                else if (complex.getHsmpNm() != null && noticeMapByHsmpNm.containsKey(complex.getHsmpNm())) {
+                    matchedNotice = noticeMapByHsmpNm.get(complex.getHsmpNm());
+                }
+                // 3순위: 정규화된 이름으로 일치
+                else if (complex.getHsmpNm() != null) {
+                    String normalizedComplexName = normalizeHousingName(complex.getHsmpNm());
+                    for (Map.Entry<String, HousingNotice> entry : noticeMapByHsmpNm.entrySet()) {
+                        String noticeName = entry.getKey();
+                        String normalizedNoticeName = normalizeHousingName(noticeName);
+                        if (normalizedComplexName.equals(normalizedNoticeName)) {
+                            matchedNotice = entry.getValue();
+                            break;
+                        }
+                    }
+                }
+                // 4순위: 추출된 단지명으로 매칭
+                if (matchedNotice == null && complex.getHsmpNm() != null) {
+                    String normalizedComplexName = normalizeHousingName(complex.getHsmpNm());
+                    // 정확히 일치하는 경우
+                    for (Map.Entry<String, HousingNotice> entry : noticeMapByExtractedName.entrySet()) {
+                        String extractedName = entry.getKey();
+                        String normalizedExtracted = normalizeHousingName(extractedName);
+                        if (normalizedComplexName.equals(normalizedExtracted)) {
+                            matchedNotice = entry.getValue();
+                            System.out.println("✅ 추출된 단지명으로 정확 매칭: '" + complex.getHsmpNm() + "' <-> '" + extractedName + "'");
+                            break;
+                        }
+                    }
+                    
+                    // 부분 매칭 시도 (예: "옥산3단지" <-> "옥산77단지7-8")
+                    if (matchedNotice == null) {
+                        for (Map.Entry<String, HousingNotice> entry : noticeMapByExtractedName.entrySet()) {
+                            String extractedName = entry.getKey();
+                            String normalizedExtracted = normalizeHousingName(extractedName);
+                            
+                            // 공통 접두사가 3자 이상이고, 둘 다 "단지", "아파트", "주택"을 포함하는 경우
+                            if (normalizedComplexName.length() >= 3 && normalizedExtracted.length() >= 3) {
+                                // 접두사 매칭 (최소 3자)
+                                int minLen = Math.min(normalizedComplexName.length(), normalizedExtracted.length());
+                                int commonPrefix = 0;
+                                for (int i = 0; i < minLen && i < 10; i++) { // 최대 10자까지 비교
+                                    if (normalizedComplexName.charAt(i) == normalizedExtracted.charAt(i)) {
+                                        commonPrefix++;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                
+                                // 공통 접두사가 3자 이상이고, 둘 다 같은 키워드(단지/아파트/주택)를 포함
+                                if (commonPrefix >= 3) {
+                                    boolean bothHaveKeyword = (normalizedComplexName.contains("단지") || normalizedComplexName.contains("아파트") || normalizedComplexName.contains("주택")) &&
+                                                             (normalizedExtracted.contains("단지") || normalizedExtracted.contains("아파트") || normalizedExtracted.contains("주택"));
+                                    if (bothHaveKeyword) {
+                                        matchedNotice = entry.getValue();
+                                        System.out.println("✅ 추출된 단지명으로 부분 매칭: '" + complex.getHsmpNm() + "' <-> '" + extractedName + "' (공통 접두사: " + commonPrefix + "자)");
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                // 5순위: 퍼지 매칭 (유사도 0.8 이상)
+                if (matchedNotice == null && complex.getHsmpNm() != null) {
+                    double bestSimilarity = 0.0;
+                    HousingNotice bestMatch = null;
+                    String bestMatchName = null;
+                    
+                    // hsmpNm으로 퍼지 매칭 (null이므로 스킵됨)
+                    for (Map.Entry<String, HousingNotice> entry : noticeMapByHsmpNm.entrySet()) {
+                        String noticeName = entry.getKey();
+                        double similarity = calculateSimilarity(complex.getHsmpNm(), noticeName);
+                        if (similarity >= 0.8 && similarity > bestSimilarity) {
+                            bestSimilarity = similarity;
+                            bestMatch = entry.getValue();
+                            bestMatchName = noticeName;
+                        }
+                    }
+                    
+                    // 추출된 단지명으로 퍼지 매칭
+                    for (Map.Entry<String, HousingNotice> entry : noticeMapByExtractedName.entrySet()) {
+                        String extractedName = entry.getKey();
+                        double similarity = calculateSimilarity(complex.getHsmpNm(), extractedName);
+                        if (similarity >= 0.8 && similarity > bestSimilarity) {
+                            bestSimilarity = similarity;
+                            bestMatch = entry.getValue();
+                            bestMatchName = extractedName;
+                        }
+                    }
+                    
+                    // 공고명 전체로도 퍼지 매칭 시도
+                    for (HousingNotice notice : notices) {
+                        if (notice.getPanNm() != null && !notice.getPanNm().isEmpty()) {
+                            double similarity = calculateSimilarity(complex.getHsmpNm(), notice.getPanNm());
+                            if (similarity >= 0.8 && similarity > bestSimilarity) {
+                                bestSimilarity = similarity;
+                                bestMatch = notice;
+                                bestMatchName = notice.getPanNm();
+                            }
+                        }
+                    }
+                    
+                    // 공고명에서 추출한 단지명과 단지명의 부분 매칭도 시도 (유사도 0.7 이상)
+                    for (Map.Entry<String, HousingNotice> entry : noticeMapByExtractedName.entrySet()) {
+                        String extractedName = entry.getKey();
+                        double similarity = calculateSimilarity(complex.getHsmpNm(), extractedName);
+                        if (similarity >= 0.7 && similarity > bestSimilarity) { // 임계값을 0.7로 낮춤
+                            bestSimilarity = similarity;
+                            bestMatch = entry.getValue();
+                            bestMatchName = extractedName;
+                        }
+                    }
+                    
+                    if (bestMatch != null) {
+                        matchedNotice = bestMatch;
+                        System.out.println("✅ 퍼지 매칭 성공: '" + complex.getHsmpNm() + "' <-> '" + bestMatchName + "' (유사도: " + String.format("%.2f", bestSimilarity) + ")");
+                    }
+                }
+                
+                // Housing 엔티티 생성 (complex 데이터 기반)
+                Housing housing = convertComplexToHousing(complex, matchedNotice);
+                
+                // DB에 저장 (이미 존재하면 업데이트)
+                boolean exists = housingRepository.existsById(housing.getHousingId());
+                housingRepository.findById(housing.getHousingId())
+                        .ifPresentOrElse(
+                                existing -> {
+                                    updateHousingData(existing, housing);
+                                    housingRepository.save(existing);
+                                },
+                                () -> {
+                                    housingRepository.save(housing);
+                                }
+                        );
+                
+                if (exists) {
+                    updatedCount++;
+                } else {
+                    savedCount++;
+                }
+                
+                if (matchedNotice != null) {
+                    matchedCount++;
+                }
+                
+            } catch (Exception e) {
+                System.err.println("단지정보 저장 실패: " + 
+                        (complex.getHsmpNm() != null ? complex.getHsmpNm() : "알 수 없음") + 
+                        " - " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+        
+        System.out.println("========================================");
+        System.out.println("housing 테이블 저장 완료:");
+        System.out.println("  - 총 단지정보: " + complexes.size() + "건");
+        System.out.println("  - 공고문 매칭: " + matchedCount + "건");
+        System.out.println("  - 저장: " + savedCount + "건, 업데이트: " + updatedCount + "건");
+        System.out.println("========================================");
+    }
+    
+    /**
+     * HousingComplex와 HousingNotice를 병합하여 Housing 엔티티로 변환
+     * 모든 필드가 null이 아닌 값으로 채워지도록 보장
+     */
+    private Housing convertComplexToHousing(HousingComplex complex, HousingNotice notice) {
+        // housingId는 complexId 사용 (필수, null 불가)
+        String housingId = complex.getComplexId();
+        if (housingId == null || housingId.isEmpty()) {
+            housingId = "HOUSING_" + System.currentTimeMillis() + "_" + 
+                    (complex.getHsmpNm() != null ? complex.getHsmpNm().hashCode() : 0);
+        }
+        
+        // name 필드 (필수, null 불가)
+        String name = complex.getHsmpNm();
+        if (name == null || name.isEmpty()) {
+            name = notice != null && notice.getPanNm() != null ? notice.getPanNm() : "알 수 없는 단지";
+        }
+        if (name.length() > 255) {
+            name = name.substring(0, 255);
+        }
+        
+        Housing.HousingBuilder builder = Housing.builder()
+                .housingId(housingId)
+                .name(name)
+                // address: complex에서 가져오거나 지역명 조합
+                .address(buildAddressFromComplex(complex))
+                // supplyArea: complex에서 가져오거나 기본값
+                .supplyArea(complex.getSupplyArea() != null ? complex.getSupplyArea() : 0.0)
+                // completeDate: complex에서 가져오거나 null
+                .completeDate(complex.getCompleteDate())
+                // organization: complex에서 가져오거나 기본값
+                .organization(complex.getInsttNm() != null && !complex.getInsttNm().isEmpty() 
+                        ? complex.getInsttNm() 
+                        : "LH공사")
+                // heatingType: complex에서 가져오거나 기본값
+                .heatingType(complex.getHeatMthdDetailNm() != null && !complex.getHeatMthdDetailNm().isEmpty() 
+                        ? complex.getHeatMthdDetailNm() 
+                        : "중앙난방")
+                // elevator: complex에서 가져오거나 기본값 (false)
+                .elevator(complex.getElevator() != null ? complex.getElevator() : false)
+                // parkingSpaces: complex에서 가져오거나 기본값
+                .parkingSpaces(complex.getParkingSpaces() != null ? complex.getParkingSpaces() : 0)
+                // deposit: complex에서 가져오거나 기본값
+                .deposit(complex.getDeposit() != null ? complex.getDeposit() : 0)
+                // monthlyRent: complex에서 가져오거나 기본값
+                .monthlyRent(complex.getMonthlyRent() != null ? complex.getMonthlyRent() : 0)
+                // totalUnits: complex에서 가져오거나 기본값
+                .totalUnits(complex.getTotalUnits() != null ? complex.getTotalUnits() : 0)
+                // latitude, longitude: complex에서 가져오거나 null
+                .latitude(complex.getLatitude())
+                .longitude(complex.getLongitude())
+                // housingType: complex에서 가져오거나 공고문에서 가져오거나 기본값
+                .housingType(determineHousingType(complex, notice));
+        
+        // 공고문 데이터로 보완
+        if (notice != null) {
+            // applicationStart: 공고문에서 가져오거나 기본값 (현재 날짜)
+            if (notice.getApplicationStart() != null) {
+                builder.applicationStart(notice.getApplicationStart());
+            } else {
+                // 기본값: 현재 날짜
+                builder.applicationStart(new Date(System.currentTimeMillis()));
+            }
+            
+            // applicationEnd: 공고문에서 가져오거나 기본값 (1년 후)
+            if (notice.getApplicationEnd() != null) {
+                builder.applicationEnd(notice.getApplicationEnd());
+            } else {
+                // 기본값: 1년 후
+                long oneYearLater = System.currentTimeMillis() + (365L * 24 * 60 * 60 * 1000);
+                builder.applicationEnd(new Date(oneYearLater));
+            }
+            
+            // link: 공고문에서 가져오거나 기본 URL
+            String link = notice.getDtlUrl();
+            if (link == null || link.isEmpty()) {
+                link = "https://apply.lh.or.kr/";
+            }
+            builder.link(link);
+        } else {
+            // 매칭되지 않은 경우 기본값 설정
+            builder.applicationStart(new Date(System.currentTimeMillis()));
+            long oneYearLater = System.currentTimeMillis() + (365L * 24 * 60 * 60 * 1000);
+            builder.applicationEnd(new Date(oneYearLater));
+            builder.link("https://apply.lh.or.kr/");
+        }
+        
+        return builder.build();
+    }
+    
+    /**
+     * HousingComplex의 정보로 주소 생성
+     */
+    private String buildAddressFromComplex(HousingComplex complex) {
+        // 1순위: rnAdres (도로명 주소)
+        if (complex.getRnAdres() != null && !complex.getRnAdres().isEmpty()) {
+            return complex.getRnAdres();
+        }
+        
+        // 2순위: 지역명 + 단지명 조합
+        StringBuilder address = new StringBuilder();
+        if (complex.getBrtcNm() != null && !complex.getBrtcNm().isEmpty()) {
+            address.append(complex.getBrtcNm());
+        }
+        if (complex.getSignguNm() != null && !complex.getSignguNm().isEmpty()) {
+            if (address.length() > 0) {
+                address.append(" ");
+            }
+            address.append(complex.getSignguNm());
+        }
+        if (complex.getHsmpNm() != null && !complex.getHsmpNm().isEmpty()) {
+            if (address.length() > 0) {
+                address.append(" ");
+            }
+            address.append(complex.getHsmpNm());
+        }
+        
+        // 최소한 지역명이라도 있으면 반환
+        if (address.length() > 0) {
+            return address.toString();
+        }
+        
+        // 기본값
+        return "주소 정보 없음";
+    }
+    
+    /**
+     * 주택유형 결정 (complex 우선, 없으면 notice, 둘 다 없으면 기본값)
+     */
+    private String determineHousingType(HousingComplex complex, HousingNotice notice) {
+        // 1순위: complex의 suplyTyNm
+        if (complex.getSuplyTyNm() != null && !complex.getSuplyTyNm().isEmpty()) {
+            return complex.getSuplyTyNm();
+        }
+        
+        // 2순위: notice의 aisTpCdNm
+        if (notice != null && notice.getAisTpCdNm() != null && !notice.getAisTpCdNm().isEmpty()) {
+            return notice.getAisTpCdNm();
+        }
+        
+        // 3순위: complex의 houseTyNm
+        if (complex.getHouseTyNm() != null && !complex.getHouseTyNm().isEmpty()) {
+            return complex.getHouseTyNm();
+        }
+        
+        // 기본값
+        return "공공임대주택";
+    }
+    
+    /**
+     * 공고명에서 단지명 추출
+     * 예: "청주옥산3 A16, A17, A22, A23단지 건설공사 청주시 청원구 옥산면 입주자모집" -> "옥산3단지" 또는 "옥산3"
+     * 예: "2024년 LH공사 공급주택 공고 (서울 양천구 목동단지)" -> "목동단지"
+     */
+    private String extractComplexNameFromNoticeName(String panNm) {
+        if (panNm == null || panNm.isEmpty()) {
+            return null;
+        }
+        
+        // 괄호 안의 내용 추출
+        if (panNm.contains("(") && panNm.contains(")")) {
+            int start = panNm.indexOf("(") + 1;
+            int end = panNm.indexOf(")");
+            if (start < end) {
+                String extracted = panNm.substring(start, end).trim();
+                // "단지", "아파트", "주택" 등이 포함된 경우만 단지명으로 인정
+                if (extracted.contains("단지") || extracted.contains("아파트") || extracted.contains("주택")) {
+                    // 지역명 제거 (예: "서울 양천구 목동단지" -> "목동단지")
+                    String[] parts = extracted.split("\\s+");
+                    for (int i = parts.length - 1; i >= 0; i--) {
+                        if (parts[i].contains("단지") || parts[i].contains("아파트") || parts[i].contains("주택")) {
+                            return parts[i];
+                        }
+                    }
+                    return extracted;
+                }
+            }
+        }
+        
+        // 괄호가 없으면 공고명에서 단지명 패턴 찾기
+        // 예: "청주옥산3 A16, A17, A22, A23단지" -> "옥산3단지" 또는 "옥산3"
+        // 예: "목동단지 공급주택 공고" -> "목동단지"
+        
+        // 패턴 1: "XXX단지" 형식 찾기
+        java.util.regex.Pattern pattern1 = java.util.regex.Pattern.compile("([가-힣]+\\d*단지)");
+        java.util.regex.Matcher matcher1 = pattern1.matcher(panNm);
+        if (matcher1.find()) {
+            return matcher1.group(1);
+        }
+        
+        // 패턴 2: "XXX아파트" 형식 찾기
+        java.util.regex.Pattern pattern2 = java.util.regex.Pattern.compile("([가-힣]+\\d*아파트)");
+        java.util.regex.Matcher matcher2 = pattern2.matcher(panNm);
+        if (matcher2.find()) {
+            return matcher2.group(1);
+        }
+        
+        // 패턴 3: "XXX주택" 형식 찾기
+        java.util.regex.Pattern pattern3 = java.util.regex.Pattern.compile("([가-힣]+\\d*주택)");
+        java.util.regex.Matcher matcher3 = pattern3.matcher(panNm);
+        if (matcher3.find()) {
+            return matcher3.group(1);
+        }
+        
+        // 패턴 4: 공백으로 구분된 단어 중 "단지", "아파트", "주택" 포함 단어 찾기
+        String[] keywords = {"단지", "아파트", "주택"};
+        String[] words = panNm.split("\\s+");
+        for (String word : words) {
+            for (String keyword : keywords) {
+                if (word.contains(keyword)) {
+                    // "A16, A17" 같은 것을 제외하고 한글이 포함된 경우만
+                    if (word.matches(".*[가-힣]+.*")) {
+                        return word.replaceAll("[^가-힣0-9" + keyword + "]", ""); // 특수문자 제거
+                    }
+                }
+            }
+        }
+        
+        // 패턴 5: 앞부분에서 단지명 추출 시도 (예: "청주옥산3" -> "옥산3")
+        for (String keyword : keywords) {
+            int index = panNm.indexOf(keyword);
+            if (index > 0) {
+                // 앞부분에서 한글+숫자 패턴 찾기
+                String before = panNm.substring(0, index + keyword.length());
+                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("([가-힣]+\\d*" + keyword + ")");
+                java.util.regex.Matcher matcher = pattern.matcher(before);
+                if (matcher.find()) {
+                    return matcher.group(1);
+                }
+            }
+        }
+        
+        return null;
     }
 }
 

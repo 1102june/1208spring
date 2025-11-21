@@ -1,6 +1,8 @@
 package com.example.youth.controller;
 
 import com.example.youth.dto.ApiResponse;
+import com.example.youth.DB.HousingNotice;
+import com.example.youth.DB.HousingComplex;
 import com.example.youth.repository.HousingRepository;
 import com.example.youth.repository.HousingNoticeRepository;
 import com.example.youth.repository.HousingComplexRepository;
@@ -9,7 +11,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/admin/housing")
@@ -43,6 +47,44 @@ public class HousingSyncController {
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(ApiResponse.error("동기화 중 오류 발생: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * housing_notice와 housing_complex를 매칭하여 housing 테이블에 저장
+     * POST /api/admin/housing/match-and-save
+     */
+    @PostMapping("/match-and-save")
+    public ResponseEntity<ApiResponse<String>> matchAndSaveHousingData() {
+        try {
+            housingSyncService.matchAndSaveHousingData();
+            return ResponseEntity.ok(ApiResponse.success("housing_notice와 housing_complex 매칭 및 housing 테이블 저장이 완료되었습니다."));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("매칭 및 저장 중 오류 발생: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * housing 테이블의 모든 데이터 삭제
+     * DELETE /api/admin/housing/clear
+     */
+    @DeleteMapping("/clear")
+    public ResponseEntity<ApiResponse<Object>> clearHousingData() {
+        try {
+            long count = housingRepository.count();
+            housingRepository.deleteAll();
+            
+            Map<String, Object> result = new java.util.HashMap<>();
+            result.put("deletedCount", count);
+            result.put("message", "housing 테이블의 모든 데이터가 삭제되었습니다.");
+            
+            return ResponseEntity.ok(ApiResponse.success("housing 테이블 데이터 삭제 완료", result));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("데이터 삭제 중 오류 발생: " + e.getMessage()));
         }
     }
     
@@ -119,6 +161,96 @@ public class HousingSyncController {
                 return ResponseEntity.internalServerError()
                         .body(ApiResponse.error("상태 조회 중 오류 발생: " + e.getMessage()));
             }
+        }
+    }
+    
+    /**
+     * housing_complex 테이블 샘플 데이터 조회 (디버깅용)
+     * GET /api/admin/housing/complex/sample?limit=10
+     */
+    @GetMapping("/complex/sample")
+    public ResponseEntity<ApiResponse<Object>> getComplexSample(@RequestParam(defaultValue = "10") int limit) {
+        try {
+            List<HousingComplex> complexes = housingComplexRepository.findAll()
+                    .stream()
+                    .limit(limit)
+                    .collect(Collectors.toList());
+            
+            List<Map<String, Object>> sampleData = complexes.stream()
+                    .map(complex -> {
+                        Map<String, Object> data = new java.util.HashMap<>();
+                        data.put("complexId", complex.getComplexId());
+                        data.put("hsmpNm", complex.getHsmpNm());
+                        data.put("hsmpSn", complex.getComplexId()); // complexId는 hsmpSn
+                        data.put("rnAdres", complex.getRnAdres());
+                        data.put("brtcNm", complex.getBrtcNm());
+                        data.put("signguNm", complex.getSignguNm());
+                        return data;
+                    })
+                    .collect(Collectors.toList());
+            
+            Map<String, Object> result = new java.util.HashMap<>();
+            result.put("count", complexes.size());
+            result.put("totalCount", housingComplexRepository.count());
+            result.put("data", sampleData);
+            
+            return ResponseEntity.ok(ApiResponse.success("단지정보 샘플 데이터 조회 성공", result));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("샘플 데이터 조회 중 오류 발생: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * housing_notice 테이블 샘플 데이터 조회 (디버깅용)
+     * GET /api/admin/housing/notice/sample?limit=10
+     */
+    @GetMapping("/notice/sample")
+    public ResponseEntity<ApiResponse<Object>> getNoticeSample(@RequestParam(defaultValue = "10") int limit) {
+        try {
+            List<HousingNotice> notices = housingNoticeRepository.findAll()
+                    .stream()
+                    .limit(limit)
+                    .collect(Collectors.toList());
+            
+            List<Map<String, Object>> sampleData = notices.stream()
+                    .map(notice -> {
+                        Map<String, Object> data = new java.util.HashMap<>();
+                        data.put("noticeId", notice.getNoticeId());
+                        data.put("panId", notice.getPanId());
+                        data.put("panNm", notice.getPanNm());
+                        data.put("hsmpSn", notice.getHsmpSn());
+                        data.put("hsmpNm", notice.getHsmpNm());
+                        data.put("cnpCdNm", notice.getCnpCdNm());
+                        data.put("dtlUrl", notice.getDtlUrl());
+                        data.put("applicationStart", notice.getApplicationStart());
+                        data.put("applicationEnd", notice.getApplicationEnd());
+                        return data;
+                    })
+                    .collect(Collectors.toList());
+            
+            Map<String, Object> result = new java.util.HashMap<>();
+            result.put("count", notices.size());
+            result.put("totalCount", housingNoticeRepository.count());
+            result.put("data", sampleData);
+            
+            // hsmpSn과 hsmpNm이 null인 개수 확인
+            long hsmpSnNullCount = housingNoticeRepository.findAll().stream()
+                    .filter(n -> n.getHsmpSn() == null || n.getHsmpSn().isEmpty())
+                    .count();
+            long hsmpNmNullCount = housingNoticeRepository.findAll().stream()
+                    .filter(n -> n.getHsmpNm() == null || n.getHsmpNm().isEmpty())
+                    .count();
+            
+            result.put("hsmpSnNullCount", hsmpSnNullCount);
+            result.put("hsmpNmNullCount", hsmpNmNullCount);
+            
+            return ResponseEntity.ok(ApiResponse.success("공고문 샘플 데이터 조회 성공", result));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("샘플 데이터 조회 중 오류 발생: " + e.getMessage()));
         }
     }
 }
