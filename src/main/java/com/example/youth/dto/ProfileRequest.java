@@ -13,7 +13,7 @@ public class ProfileRequest {
     private String education; // "대학교 재학"
     private String employment; // "학생"
     private List<String> interests; // ["창업", "취업"]
-    private String appVersion;
-    private String deviceId;
+    private String appVersion; // 앱 버전
+    private String deviceId; // 디바이스 ID
 }
 

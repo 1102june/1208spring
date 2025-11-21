@@ -27,23 +27,15 @@ public class UserService {
      * 회원가입 로직
      * (SignupController에서 호출)
      */
+    @Transactional
     public String registerUser(User user) {
-        // UID로 중복 체크 (Google 로그인 시 같은 이메일로 여러 계정 생성 가능)
+        // UID로 이미 존재하는지 확인 (이메일 중복 체크는 제거 - Google 로그인 사용자는 같은 이메일로 여러 계정 가능)
         if (userRepository.existsById(user.getUserId())) {
             return "User already exists";
         }
-        
-        // 이메일 중복 체크 (로컬 로그인 시)
-        if (userRepository.existsByEmail(user.getEmail())) {
-            return "Email already exists";
-        }
-
-        // Google 로그인 시 password_hash가 null이면 빈 문자열로 설정
-        if (user.getPasswordHash() == null && user.getLoginType() == com.example.youth.DB.LoginType.google) {
-            user.setPasswordHash("");
-        }
 
         userRepository.save(user);
+        userRepository.flush(); // 즉시 DB에 반영
         return "회원가입 성공";
     }
 
@@ -95,7 +87,7 @@ public class UserService {
      */
     @Transactional
     public void saveOrUpdateProfile(String userId, ProfileRequest profileRequest) {
-        // 1) User 조회
+        // 1) User 조회 (이미 UserController에서 생성되었으므로 존재해야 함)
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
@@ -107,14 +99,7 @@ public class UserService {
                 .orElse(UserProfile.builder().user(user).build());
 
         profile.setBirthYear(birthDate);
-        
-        // gender는 VARCHAR(10)이므로 "male" 또는 "female" 저장
-        String gender = profileRequest.getGender();
-        if (gender != null && gender.length() > 10) {
-            gender = gender.substring(0, 10);
-        }
-        profile.setGender(gender);
-        
+        profile.setGender(profileRequest.getGender());
         // region은 VARCHAR(10)이므로 province만 저장 (예: "서울", "경기", "강원")
         // city는 별도로 저장하지 않음 (스키마 제약)
         String region = profileRequest.getProvince();
@@ -122,20 +107,8 @@ public class UserService {
             region = region.substring(0, 10); // 최대 10자로 제한
         }
         profile.setRegion(region);
-        
-        // education은 VARCHAR(10)이므로 길이 제한
-        String education = profileRequest.getEducation();
-        if (education != null && education.length() > 10) {
-            education = education.substring(0, 10);
-        }
-        profile.setEducation(education);
-        
-        // job_status는 VARCHAR(10)이므로 길이 제한
-        String jobStatus = profileRequest.getEmployment();
-        if (jobStatus != null && jobStatus.length() > 10) {
-            jobStatus = jobStatus.substring(0, 10);
-        }
-        profile.setJobStatus(jobStatus);
+        profile.setEducation(profileRequest.getEducation());
+        profile.setJobStatus(profileRequest.getEmployment());
 
         userProfileRepository.save(profile);
 
