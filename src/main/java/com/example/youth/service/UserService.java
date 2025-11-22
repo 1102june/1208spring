@@ -54,6 +54,16 @@ public class UserService {
     }
 
     /**
+     * 이메일 중복 확인
+     * 
+     * @param email 확인할 이메일 주소
+     * @return 중복 여부 (true: 이미 사용 중, false: 사용 가능)
+     */
+    public boolean isEmailExists(String email) {
+        return userRepository.existsByEmail(email);
+    }
+
+    /**
      * 🔥 OTP 인증 성공 시 이메일 인증 완료로 업데이트
      */
     public void updateEmailVerified(String email) {

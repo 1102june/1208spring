@@ -14,6 +14,46 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.MariaDBDialect
 
+  # 이메일 설정 (범용 SMTP 서버 사용 - 모든 이메일 주소로 발송 가능)
+  # 🔥 Gmail SMTP 사용 (권장 - 모든 이메일 주소로 발송 가능):
+  #    - host: smtp.gmail.com
+  #    - port: 587
+  #    - EMAIL_USERNAME: Gmail 주소 (예: wiseyoung@gmail.com)
+  #    - EMAIL_PASSWORD: Gmail 앱 비밀번호 (2단계 인증 활성화 후 생성)
+  #    - Google 계정 > 보안 > 2단계 인증 활성화 > 앱 비밀번호 생성 필요
+  #    - ✅ Gmail SMTP는 네이버, 카카오, Outlook 등 모든 이메일 주소로 발송 가능
+  # 
+  # 🔥 네이버 메일 사용 시 (대안):
+  #    - host: smtp.naver.com
+  #    - port: 587
+  #    - EMAIL_USERNAME: 네이버 메일 주소 (예: your-email@naver.com)
+  #    - EMAIL_PASSWORD: 네이버 메일 비밀번호 (또는 앱 비밀번호)
+  #    - 네이버 메일 설정 > POP3/IMAP 설정 > SMTP 사용 허용 필요
+  # 
+  # 🔥 카카오 메일 사용 시 (대안):
+  #    - host: smtp.daum.net (카카오는 daum.net 사용)
+  #    - port: 587
+  #    - EMAIL_USERNAME: 카카오 메일 주소 (예: your-email@kakao.com 또는 your-email@hanmail.net)
+  #    - EMAIL_PASSWORD: 카카오 메일 비밀번호
+  #    - 카카오 메일 설정 > 외부 메일 앱 사용 설정 > SMTP 사용 허용 필요
+  mail:
+    # Gmail SMTP 설정 (기본값 - 모든 이메일 주소로 발송 가능)
+    host: smtp.gmail.com
+    port: 587
+    # 네이버 메일 사용 시: host: smtp.naver.com
+    # 카카오 메일 사용 시: host: smtp.daum.net
+    username: ${EMAIL_USERNAME:}  # 발신자 이메일 주소 (Gmail 권장 - 모든 메일로 발송 가능)
+    password: ${EMAIL_PASSWORD:}  # 발신자 이메일 비밀번호 또는 앱 비밀번호 (환경 변수로 설정)
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
 server:
   port: 8080
 
@@ -45,3 +85,8 @@ kakao:
   map:
     rest-api-key: ${KAKAO_REST_API_KEY:7b587003c2c00f816243e86c138e7fcb}  # REST API 키
     base-url: https://dapi.kakao.com
+
+# OTP 설정
+otp:
+  expiry-minutes: 5  # 인증번호 만료 시간 (분)
+  length: 6  # 인증번호 자릿수
