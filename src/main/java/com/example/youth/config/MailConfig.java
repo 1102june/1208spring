@@ -2,7 +2,6 @@ package com.example.youth.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.mail.MailProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -49,19 +48,28 @@ public class MailConfig {
             password != null && !password.isEmpty()) {
             mailSender.setUsername(username);
             mailSender.setPassword(password);
+            System.out.println("✅ Gmail SMTP 설정 완료: " + username);
         } else {
             // 환경 변수가 없으면 더미 값 사용 (실제 발송은 실패하지만 빈은 생성됨)
             mailSender.setUsername("dummy@example.com");
             mailSender.setPassword("dummy");
+            System.err.println("⚠️ Gmail SMTP 환경 변수가 설정되지 않았습니다!");
+            System.err.println("   이메일 발송을 위해 다음 환경 변수를 설정하세요:");
+            System.err.println("   EMAIL_USERNAME=your-email@gmail.com");
+            System.err.println("   EMAIL_PASSWORD=your-app-password");
+            System.err.println("   (Gmail 앱 비밀번호 생성 필요: Google 계정 > 보안 > 2단계 인증 > 앱 비밀번호)");
         }
 
         Properties props = mailSender.getJavaMailProperties();
         props.put("mail.transport.protocol", "smtp");
         props.put("mail.smtp.auth", "true");
         props.put("mail.smtp.starttls.enable", "true");
-        props.put("mail.smtp.connectiontimeout", "5000");
-        props.put("mail.smtp.timeout", "5000");
-        props.put("mail.smtp.writetimeout", "5000");
+        props.put("mail.smtp.connectiontimeout", "10000");
+        props.put("mail.smtp.timeout", "10000");
+        props.put("mail.smtp.writetimeout", "10000");
+        // Gmail SMTP 추가 설정
+        props.put("mail.smtp.ssl.trust", "smtp.gmail.com");
+        props.put("mail.smtp.ssl.protocols", "TLSv1.2");
 
         return mailSender;
     }

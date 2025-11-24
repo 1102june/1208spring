@@ -42,8 +42,8 @@ spring:
     port: 587
     # 네이버 메일 사용 시: host: smtp.naver.com
     # 카카오 메일 사용 시: host: smtp.daum.net
-    username: ${EMAIL_USERNAME:}  # 발신자 이메일 주소 (Gmail 권장 - 모든 메일로 발송 가능)
-    password: ${EMAIL_PASSWORD:}  # 발신자 이메일 비밀번호 또는 앱 비밀번호 (환경 변수로 설정)
+    username: ${EMAIL_USERNAME:subpark12@gmail.com}  # 발신자 이메일 주소 (Gmail 권장 - 모든 메일로 발송 가능)
+    password: ${EMAIL_PASSWORD:hfgadjzzkzaohcjc}  # 발신자 이메일 비밀번호 또는 앱 비밀번호 (환경 변수로 설정)
     properties:
       mail:
         smtp:

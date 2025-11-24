@@ -66,6 +66,18 @@ public class EmailService {
 
         } catch (Exception e) {
             log.error("인증번호 이메일 발송 실패: {}", toEmail, e);
+            log.error("오류 상세: {}", e.getClass().getSimpleName() + ": " + e.getMessage());
+            
+            // Gmail 인증 실패인 경우 더 자세한 안내
+            if (e.getMessage() != null && e.getMessage().contains("Authentication failed")) {
+                log.error("⚠️ Gmail SMTP 인증 실패!");
+                log.error("   해결 방법:");
+                log.error("   1. Gmail 앱 비밀번호가 올바른지 확인");
+                log.error("   2. 환경 변수 EMAIL_USERNAME, EMAIL_PASSWORD 설정 확인");
+                log.error("   3. Google 계정 > 보안 > 2단계 인증 활성화 확인");
+                System.err.println("⚠️ Gmail SMTP 인증 실패! 환경 변수를 확인하세요.");
+            }
+            
             throw new RuntimeException("이메일 발송에 실패했습니다: " + e.getMessage(), e);
         }
     }
