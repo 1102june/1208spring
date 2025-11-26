@@ -12,7 +12,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MainPageResponse {
-    private List<AIRecommendationResponse> aiRecommendedPolicies; // AI 추천 정책 목록 (스와이프 카드)
+    private List<?> aiRecommendedPolicies; // AI 추천 기능 제거됨 (빈 리스트 반환)
     private Integer unreadNotificationCount; // 읽지 않은 알림 개수
 }
 

@@ -1,0 +1,82 @@
+# Docker 환경용 설정 파일
+spring:
+  datasource:
+    driver-class-name: org.mariadb.jdbc.Driver
+    # Docker Compose에서 제공하는 환경 변수 사용
+    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://mariadb:3306/wise_young?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Seoul}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:1234}
+
+  jpa:
+    hibernate:
+      ddl-auto: update  # Docker 환경에서는 update 사용
+    show-sql: false  # Docker 환경에서는 로그 최소화
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.MariaDBDialect
+
+  # 이메일 설정
+  mail:
+    host: ${EMAIL_HOST:smtp.gmail.com}
+    port: ${EMAIL_PORT:587}
+    username: ${EMAIL_USERNAME:}
+    password: ${EMAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+server:
+  port: 8080
+
+# 공공데이터 API 설정
+public-data:
+  lh:
+    rental-house-list:
+      url: https://data.myhome.go.kr:443/rentalHouseList
+      service-key: ${LH_SERVICE_KEY:}
+      encoding-key: ${LH_ENCODING_KEY:}
+      decoding-key: ${LH_DECODING_KEY:}
+    rental-notice:
+      url: ${LH_RENTAL_NOTICE_URL:https://apis.data.go.kr/B552555}
+      service-key: ${LH_RENTAL_NOTICE_SERVICE_KEY:}
+      encoding-key: ${LH_RENTAL_NOTICE_ENCODING_KEY:}
+      decoding-key: ${LH_RENTAL_NOTICE_DECODING_KEY:}
+
+# 청년정책 API 설정
+youth-policy:
+  url: ${YOUTH_POLICY_API_URL:https://www.youthcenter.go.kr/go/ythip/getPlcy}
+  service-key: ${YOUTH_POLICY_SERVICE_KEY:}
+
+# 카카오맵 API 설정
+kakao:
+  map:
+    rest-api-key: ${KAKAO_REST_API_KEY:}
+    base-url: https://dapi.kakao.com
+
+# OTP 설정
+otp:
+  expiry-minutes: 5
+  length: 6
+
+# Gemini API 설정
+gemini:
+  api:
+    key: ${GEMINI_API_KEY:}
+    base-url: https://generativelanguage.googleapis.com/v1
+    model: gemini-2.5-flash
+
+# 로깅 설정 (Docker 환경 최적화)
+logging:
+  level:
+    root: INFO
+    com.example.youth: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+

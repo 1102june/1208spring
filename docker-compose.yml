@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  # MariaDB 데이터베이스
+  mariadb:
+    image: mariadb:10.11
+    container_name: youth-mariadb
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-1234}
+      MYSQL_DATABASE: ${DB_NAME:-wise_young}
+      MYSQL_USER: ${DB_USERNAME:-root}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-1234}
+      TZ: Asia/Seoul
+    # 호스트 포트를 13306으로 변경 (로컬 MariaDB가 3306 사용)
+    ports:
+      - "13306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./docker/mariadb/init:/docker-entrypoint-initdb.d  # 초기화 스크립트 (선택사항)
+    networks:
+      - youth-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD:-1234}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Spring Boot 애플리케이션
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: youth-app
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      # 데이터베이스 설정
+      DB_USERNAME: ${DB_USERNAME:-root}
+      DB_PASSWORD: ${DB_PASSWORD:-1234}
+      DB_NAME: ${DB_NAME:-wise_young}
+      SPRING_DATASOURCE_URL: jdbc:mariadb://mariadb:3306/${DB_NAME:-wise_young}?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Seoul
+      
+      # Spring Profile
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
+      
+      # Gemini API
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      
+      # 이메일 설정
+      EMAIL_USERNAME: ${EMAIL_USERNAME:-}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
+      
+      # 공공데이터 API 키
+      LH_SERVICE_KEY: ${LH_SERVICE_KEY:-}
+      LH_ENCODING_KEY: ${LH_ENCODING_KEY:-}
+      LH_DECODING_KEY: ${LH_DECODING_KEY:-}
+      LH_RENTAL_NOTICE_SERVICE_KEY: ${LH_RENTAL_NOTICE_SERVICE_KEY:-}
+      LH_RENTAL_NOTICE_ENCODING_KEY: ${LH_RENTAL_NOTICE_ENCODING_KEY:-}
+      LH_RENTAL_NOTICE_DECODING_KEY: ${LH_RENTAL_NOTICE_DECODING_KEY:-}
+      
+      # 청년정책 API
+      YOUTH_POLICY_SERVICE_KEY: ${YOUTH_POLICY_SERVICE_KEY:-}
+      
+      # 카카오맵 API
+      KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
+      
+      # JVM 옵션
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx512m -Xms256m}
+    ports:
+      - "8080:8080"
+    networks:
+      - youth-network
+    # volumes:
+      # Firebase 설정 파일 (필요한 경우에만 주석 해제)
+      # - ./src/main/resources/firebase-admin.json:/app/firebase-admin.json:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  mariadb_data:
+    driver: local
+
+networks:
+  youth-network:
+    driver: bridge
+

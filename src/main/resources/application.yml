@@ -94,6 +94,7 @@ otp:
 # Gemini API 설정
 gemini:
   api:
-    key: ${GEMINI_API_KEY:AIzaSyAD_3q2eMM66e0KYqgJEE90gM19utZf4yI}  # Gemini API 키 (환경 변수 우선, 없으면 기본값 사용)
+    # 로컬 개발용 기본값 (프로덕션에서는 환경 변수 GEMINI_API_KEY 사용 권장)
+    key: ${GEMINI_API_KEY:AIzaSyCDkKKQR5P234TZEKYff35z3rgOYrI24PM}
     base-url: https://generativelanguage.googleapis.com/v1  # v1 API 사용 (v1beta는 구버전, 사용하지 않음)
     model: gemini-2.5-flash  # 사용할 모델명 (이 프로젝트에서 사용 가능한 모델: gemini-2.5-flash)
