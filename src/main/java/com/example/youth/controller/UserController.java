@@ -4,6 +4,7 @@ import com.example.youth.DB.User;
 import com.example.youth.dto.ApiResponse;
 import com.example.youth.dto.ProfileRequest;
 import com.example.youth.dto.PushTokenRequest;
+import com.example.youth.service.FcmService;
 import com.example.youth.service.FirebaseAuthService;
 import com.example.youth.service.UserService;
 import com.google.firebase.auth.FirebaseToken;
@@ -21,6 +22,9 @@ public class UserController {
     @Autowired
     private FirebaseAuthService firebaseAuthService;
 
+    @Autowired
+    private FcmService fcmService;
+
     @PostMapping("/register")
     public String registerUser(@RequestBody User user) {
         return userService.registerUser(user);
@@ -36,55 +40,9 @@ public class UserController {
             // 1) Firebase ID Token 검증
             FirebaseToken decodedToken = firebaseAuthService.verifyToken(profileRequest.getIdToken());
             String uid = decodedToken.getUid();
-            String email = decodedToken.getEmail();
 
-            // 2) 사용자 찾기 또는 생성 (Google 로그인 사용자)
-            User user = userService.getUserByUid(uid);
-            if (user == null) {
-                // UID로 찾지 못했을 때, 이메일로도 확인
-                User existingUserByEmail = userService.getUserByEmail(email);
-                if (existingUserByEmail != null) {
-                    // 같은 이메일로 이미 가입된 사용자가 있으면 기존 사용자 사용
-                    user = existingUserByEmail;
-                    // UID가 다르면 업데이트 (하지만 UID는 PK이므로 변경 불가)
-                    // 따라서 기존 사용자를 그대로 사용
-                } else {
-                    // 이메일로도 없으면 새로 생성
-                    User newUser = User.builder()
-                            .userId(uid)
-                            .email(email)
-                            .passwordHash("") // Google login users don't have a password
-                            .emailVerified(false)
-                            .loginType(com.example.youth.DB.LoginType.google)
-                            .osType(com.example.youth.DB.OSType.android)
-                            .appVersion(profileRequest.getAppVersion())
-                            .deviceId(profileRequest.getDeviceId())
-                            .createdAt(java.time.LocalDateTime.now())
-                            .build();
-                    userService.registerUser(newUser);
-                    // 사용자 생성 후 다시 조회하여 영속성 컨텍스트에 로드
-                    user = userService.getUserByUid(uid);
-                    if (user == null) {
-                        return ResponseEntity.status(500)
-                                .body(ApiResponse.error("사용자 생성 후 조회 실패"));
-                    }
-                }
-            }
-            
-            // 기존 사용자 정보 업데이트 (appVersion, deviceId)
-            if (profileRequest.getAppVersion() != null) {
-                user.setAppVersion(profileRequest.getAppVersion());
-            }
-            if (profileRequest.getDeviceId() != null) {
-                user.setDeviceId(profileRequest.getDeviceId());
-            }
-            userService.updateUser(user);
-            
-            // 프로필 저장 시 실제 사용자의 UID 사용
-            String actualUid = user.getUserId();
-
-            // 3) 프로필 저장 (실제 사용자의 UID 사용)
-            userService.saveOrUpdateProfile(actualUid, profileRequest);
+            // 2) 프로필 저장
+            userService.saveOrUpdateProfile(uid, profileRequest);
 
             return ResponseEntity.ok(ApiResponse.success("프로필이 저장되었습니다.", null));
         } catch (Exception e) {
@@ -94,31 +52,110 @@ public class UserController {
     }
 
     /**
-     * FCM Push Token 저장/업데이트
+     * FCM 토큰 저장
      * POST /auth/push-token
      */
     @PostMapping("/push-token")
-    public ResponseEntity<ApiResponse<String>> savePushToken(@RequestBody PushTokenRequest pushTokenRequest) {
+    public ResponseEntity<ApiResponse<String>> savePushToken(@RequestBody PushTokenRequest request) {
         try {
             // 1) Firebase ID Token 검증
-            FirebaseToken decodedToken = firebaseAuthService.verifyToken(pushTokenRequest.getIdToken());
+            FirebaseToken decodedToken = firebaseAuthService.verifyToken(request.getIdToken());
             String uid = decodedToken.getUid();
 
-            // 2) 사용자 조회
-            User user = userService.getUserByUid(uid);
-            if (user == null) {
-                return ResponseEntity.status(404)
-                        .body(ApiResponse.error("사용자를 찾을 수 없습니다."));
-            }
+            // 2) FCM 토큰 저장
+            userService.saveFcmToken(uid, request.getPushToken());
 
-            // 3) Push Token 업데이트
-            user.setPushToken(pushTokenRequest.getPushToken());
-            userService.updateUser(user);
-
-            return ResponseEntity.ok(ApiResponse.success("Push Token이 저장되었습니다.", null));
+            return ResponseEntity.ok(ApiResponse.success("FCM 토큰이 저장되었습니다.", null));
         } catch (Exception e) {
             return ResponseEntity.status(500)
-                    .body(ApiResponse.error("서버 오류가 발생했습니다: " + e.getMessage()));
+                    .body(ApiResponse.error("FCM 토큰 저장 실패: " + e.getMessage()));
         }
+    }
+
+    /**
+     * 테스트용: FCM 알림 발송 (특정 사용자)
+     * POST /auth/test-notification
+     * Body: { "idToken": "...", "title": "테스트 알림", "body": "알림 내용" }
+     */
+    @PostMapping("/test-notification")
+    public ResponseEntity<ApiResponse<String>> sendTestNotification(
+            @RequestBody TestNotificationRequest request) {
+        try {
+            // 1) Firebase ID Token 검증
+            FirebaseToken decodedToken = firebaseAuthService.verifyToken(request.getIdToken());
+            String uid = decodedToken.getUid();
+
+            // 2) FCM 알림 발송
+            boolean success = fcmService.sendNotificationToUser(
+                    uid,
+                    request.getTitle() != null ? request.getTitle() : "테스트 알림",
+                    request.getBody() != null ? request.getBody() : "알림 테스트입니다."
+            );
+
+            if (success) {
+                return ResponseEntity.ok(ApiResponse.success("알림이 발송되었습니다.", null));
+            } else {
+                return ResponseEntity.status(500)
+                        .body(ApiResponse.error("알림 발송에 실패했습니다. FCM 토큰을 확인해주세요."));
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(ApiResponse.error("알림 발송 실패: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 테스트용: FCM 토큰으로 직접 알림 발송
+     * POST /auth/test-notification-by-token
+     * Body: { "fcmToken": "...", "title": "테스트 알림", "body": "알림 내용" }
+     */
+    @PostMapping("/test-notification-by-token")
+    public ResponseEntity<ApiResponse<String>> sendTestNotificationByToken(
+            @RequestBody TestNotificationByTokenRequest request) {
+        try {
+            boolean success = fcmService.sendNotification(
+                    request.getFcmToken(),
+                    request.getTitle() != null ? request.getTitle() : "테스트 알림",
+                    request.getBody() != null ? request.getBody() : "알림 테스트입니다."
+            );
+
+            if (success) {
+                return ResponseEntity.ok(ApiResponse.success("알림이 발송되었습니다.", null));
+            } else {
+                return ResponseEntity.status(500)
+                        .body(ApiResponse.error("알림 발송에 실패했습니다. FCM 토큰을 확인해주세요."));
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(ApiResponse.error("알림 발송 실패: " + e.getMessage()));
+        }
+    }
+
+    // 내부 클래스: 테스트 알림 요청 DTO
+    private static class TestNotificationRequest {
+        private String idToken;
+        private String title;
+        private String body;
+
+        public String getIdToken() { return idToken; }
+        public void setIdToken(String idToken) { this.idToken = idToken; }
+        public String getTitle() { return title; }
+        public void setTitle(String title) { this.title = title; }
+        public String getBody() { return body; }
+        public void setBody(String body) { this.body = body; }
+    }
+
+    // 내부 클래스: 토큰으로 직접 알림 발송 요청 DTO
+    private static class TestNotificationByTokenRequest {
+        private String fcmToken;
+        private String title;
+        private String body;
+
+        public String getFcmToken() { return fcmToken; }
+        public void setFcmToken(String fcmToken) { this.fcmToken = fcmToken; }
+        public String getTitle() { return title; }
+        public void setTitle(String title) { this.title = title; }
+        public String getBody() { return body; }
+        public void setBody(String body) { this.body = body; }
     }
 }

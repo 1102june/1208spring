@@ -16,6 +16,7 @@ public class UserProfile {
     private User user;
 
     private LocalDate birthYear;
+    private String nickname;
     private String gender;
     private String region;
     private String education;
