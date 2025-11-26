@@ -97,7 +97,7 @@ public class UserService {
      */
     @Transactional
     public void saveOrUpdateProfile(String userId, ProfileRequest profileRequest) {
-        // 1) User 조회 (이미 UserController에서 생성되었으므로 존재해야 함)
+        // 1) User 조회 (UserController에서 이미 생성되었으므로 존재해야 함)
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
@@ -159,5 +159,12 @@ public class UserService {
         return userRepository.findById(userId)
                 .map(User::getPushToken)
                 .orElse(null);
+    }
+
+    /**
+     * 사용자 ID로 프로필 조회
+     */
+    public UserProfile getProfileByUserId(String userId) {
+        return userProfileRepository.findByUser_UserId(userId).orElse(null);
     }
 }
