@@ -4,13 +4,19 @@ import com.example.youth.dto.publicdata.LHRentalHouseListResponse;
 import com.example.youth.dto.publicdata.LHRentalNoticeResponse;
 import com.example.youth.dto.publicdata.YouthPolicyResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.netty.http.client.HttpClient;
 
+import javax.net.ssl.SSLException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -22,6 +28,23 @@ public class PublicDataApiService {
     private final WebClient lhWebClient;
     private final WebClient lhRentalNoticeWebClient;
     private final WebClient youthPolicyWebClient;
+    
+    /**
+     * SSL 검증을 비활성화하는 HttpClient 생성 (개발 환경용)
+     */
+    private HttpClient createInsecureHttpClient() {
+        try {
+            SslContext sslContext = SslContextBuilder
+                    .forClient()
+                    .trustManager(InsecureTrustManagerFactory.INSTANCE)
+                    .build();
+            
+            return HttpClient.create()
+                    .secure(sslContextSpec -> sslContextSpec.sslContext(sslContext));
+        } catch (SSLException e) {
+            throw new RuntimeException("SSL 컨텍스트 생성 실패", e);
+        }
+    }
 
     @Value("${public-data.lh.rental-house-list.service-key}")
     private String serviceKey;
@@ -144,9 +167,13 @@ public class PublicDataApiService {
         
         // URI 객체를 직접 생성하여 WebClient에 전달 (이중 인코딩 방지)
         // baseUrl이 설정된 WebClient와 충돌을 피하기 위해 WebClient.create() 사용
+        // SSL 검증 비활성화 (개발 환경용)
         URI uri = URI.create(fullUrl);
+        HttpClient httpClient = createInsecureHttpClient();
         
-        return WebClient.create()
+        return WebClient.builder()
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .build()
                 .get()
                 .uri(uri) // URI 객체를 직접 전달 (WebClient가 추가 인코딩하지 않음)
                 .accept(MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML)
@@ -429,9 +456,13 @@ public class PublicDataApiService {
         
         // URI 객체를 직접 생성하여 WebClient에 전달 (이중 인코딩 방지)
         // baseUrl이 설정된 WebClient와 충돌을 피하기 위해 WebClient.create() 사용
+        // SSL 검증 비활성화 (개발 환경용)
         URI uri = URI.create(fullUrl);
+        HttpClient httpClient = createInsecureHttpClient();
         
-        return WebClient.create()
+        return WebClient.builder()
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .build()
                 .get()
                 .uri(uri) // URI 객체를 직접 전달 (WebClient가 추가 인코딩하지 않음)
                 .accept(MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML)

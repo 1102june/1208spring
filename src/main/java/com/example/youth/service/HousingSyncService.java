@@ -43,6 +43,120 @@ public class HousingSyncService {
     private HousingComplexRepository housingComplexRepository;
 
     /**
+     * 모든 지역의 단지정보(housing_complex) 동기화
+     * 주요 광역시도 코드(17개)와 각 시도별 실제 시군구 코드를 사용하여 전체 조회
+     */
+    public void syncAllHousingComplex() {
+        System.out.println("========================================");
+        System.out.println("전체 지역 단지정보(housing_complex) 동기화 시작");
+        System.out.println("========================================");
+        
+        // 지역 코드 매핑 서비스 초기화
+        try {
+            System.out.println("지역 코드 매핑 서비스 초기화 시작...");
+            regionCodeMappingService.initializeMapping();
+            System.out.println("지역 코드 매핑 서비스 초기화 완료");
+        } catch (Exception e) {
+            System.err.println("⚠️ 지역 코드 매핑 서비스 초기화 실패: " + e.getMessage());
+            e.printStackTrace();
+        }
+        
+        // 주요 광역시도 코드 목록 (17개 시도)
+        List<String> brtcCodes = List.of(
+            "11", // 서울특별시
+            "26", // 부산광역시
+            "27", // 대구광역시
+            "28", // 인천광역시
+            "29", // 광주광역시
+            "30", // 대전광역시
+            "31", // 울산광역시
+            "41", // 경기도
+            "42", // 강원도
+            "43", // 충청북도
+            "44", // 충청남도
+            "45", // 전라북도
+            "46", // 전라남도
+            "47", // 경상북도
+            "48", // 경상남도
+            "50"  // 제주특별자치도
+        );
+        
+        Map<String, Set<String>> allRegions = new HashMap<>();
+        
+        // 각 광역시도별로 실제 존재하는 시군구 코드 가져오기
+        for (String brtcCode : brtcCodes) {
+            try {
+                Map<String, String> signguCodes = regionCodeMappingService.getSignguCodesByBrtcCode(brtcCode);
+                if (signguCodes != null && !signguCodes.isEmpty()) {
+                    allRegions.put(brtcCode, new HashSet<>(signguCodes.values()));
+                    System.out.println("  - " + brtcCode + ": " + signguCodes.size() + "개 시군구");
+                }
+            } catch (Exception e) {
+                System.err.println("  ⚠️ " + brtcCode + " 시군구 코드 조회 실패: " + e.getMessage());
+            }
+        }
+        
+        System.out.println("총 " + allRegions.size() + "개 광역시도, " + 
+                          allRegions.values().stream().mapToInt(Set::size).sum() + "개 시군구 조합");
+        
+        // 모든 지역 조합으로 단지정보 조회
+        List<LHRentalHouseListResponse.Item> allHouseItems = syncTargetRegions(allRegions);
+        
+        // DB에 저장
+        if (!allHouseItems.isEmpty()) {
+            System.out.println("단지정보 데이터 저장 시작...");
+            saveComplexData(allHouseItems);
+            System.out.println("✅ 전체 지역 단지정보 데이터 저장 완료!");
+        } else {
+            System.err.println("⚠️ 단지정보 데이터가 없습니다.");
+        }
+    }
+
+    /**
+     * 단지정보(housing_complex)만 직접 동기화
+     * 공고문 없이도 특정 지역의 단지정보를 조회하여 DB에 저장
+     * 
+     * @param brtcCode 광역시도 코드 (필수)
+     * @param signguCode 시군구 코드 (필수)
+     */
+    public void syncHousingComplexOnly(String brtcCode, String signguCode) {
+        System.out.println("========================================");
+        System.out.println("단지정보(housing_complex) 직접 동기화 시작");
+        System.out.println("  - brtcCode: " + brtcCode);
+        System.out.println("  - signguCode: " + signguCode);
+        System.out.println("========================================");
+        
+        if (brtcCode == null || brtcCode.isEmpty()) {
+            System.err.println("⚠️ brtcCode(광역시도 코드)는 필수입니다.");
+            return;
+        }
+        if (signguCode == null || signguCode.isEmpty()) {
+            System.err.println("⚠️ signguCode(시군구 코드)는 필수입니다.");
+            return;
+        }
+        
+        // 단지정보 API 호출
+        try {
+            LHRentalHouseListResponse houseResponse = publicDataApiService.getLHRentalHouseList(
+                    1, 1000, brtcCode, signguCode, null).block();
+            
+            List<LHRentalHouseListResponse.Item> items = houseResponse != null ? houseResponse.getItems() : null;
+            if (items == null || items.isEmpty()) {
+                System.out.println("⚠️ 단지정보 데이터가 없습니다.");
+                return;
+            }
+            
+            System.out.println("✅ 단지정보 API 데이터 수집: " + items.size() + "건");
+            System.out.println("단지정보 데이터 저장 시작...");
+            saveComplexData(items);
+            System.out.println("✅ 단지정보 데이터 저장 완료!");
+        } catch (Exception e) {
+            System.err.println("⚠️ 단지정보 API 호출 실패: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
      * LH 공공데이터에서 임대주택 정보를 가져와 DB에 동기화
      * 1. 공고문 API 전체 데이터 조회 → housing_notice 테이블에 저장
      * 2. 공고문 데이터에서 지역 정보 추출

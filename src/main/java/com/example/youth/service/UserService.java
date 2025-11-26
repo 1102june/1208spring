@@ -109,6 +109,7 @@ public class UserService {
                 .orElse(UserProfile.builder().user(user).build());
 
         profile.setBirthYear(birthDate);
+        profile.setNickname(profileRequest.getNickname());
         profile.setGender(profileRequest.getGender());
         // region은 VARCHAR(10)이므로 province만 저장 (예: "서울", "경기", "강원")
         // city는 별도로 저장하지 않음 (스키마 제약)
@@ -138,5 +139,25 @@ public class UserService {
                     .toList();
             interestCategoryRepository.saveAll(newInterests);
         }
+    }
+
+    /**
+     * FCM 토큰 저장/업데이트
+     */
+    @Transactional
+    public void saveFcmToken(String userId, String fcmToken) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+        user.setPushToken(fcmToken);
+        userRepository.save(user);
+    }
+
+    /**
+     * 사용자 ID로 FCM 토큰 조회
+     */
+    public String getFcmTokenByUserId(String userId) {
+        return userRepository.findById(userId)
+                .map(User::getPushToken)
+                .orElse(null);
     }
 }
