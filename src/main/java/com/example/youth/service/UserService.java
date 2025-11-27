@@ -4,7 +4,6 @@ import com.example.youth.DB.InterestCategory;
 import com.example.youth.DB.User;
 import com.example.youth.DB.UserProfile;
 import com.example.youth.dto.ProfileRequest;
-import com.example.youth.dto.UserProfileResponse;
 import com.example.youth.repository.InterestCategoryRepository;
 import com.example.youth.repository.UserProfileRepository;
 import com.example.youth.repository.UserRepository;
@@ -13,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.time.Period;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -99,7 +97,7 @@ public class UserService {
      */
     @Transactional
     public void saveOrUpdateProfile(String userId, ProfileRequest profileRequest) {
-        // 1) User 조회 (이미 UserController에서 생성되었으므로 존재해야 함)
+        // 1) User 조회 (UserController에서 이미 생성되었으므로 존재해야 함)
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
@@ -164,32 +162,9 @@ public class UserService {
     }
 
     /**
-     * 사용자 프로필 + 관심 카테고리 조회
+     * 사용자 ID로 프로필 조회
      */
-    public UserProfileResponse getUserProfile(String userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
-
-        UserProfile profile = userProfileRepository.findByUser_UserId(userId)
-                .orElseThrow(() -> new RuntimeException("사용자 프로필을 찾을 수 없습니다."));
-
-        List<InterestCategory> interests = interestCategoryRepository.findByUser_UserId(userId);
-
-        Integer age = null;
-        if (profile.getBirthYear() != null) {
-            age = Period.between(profile.getBirthYear(), LocalDate.now()).getYears();
-        }
-
-        return UserProfileResponse.builder()
-                .userId(user.getUserId())
-                .nickname(profile.getNickname())
-                .age(age)
-                .region(profile.getRegion())
-                .education(profile.getEducation())
-                .jobStatus(profile.getJobStatus())
-                .interests(interests.stream()
-                        .map(InterestCategory::getCategory)
-                        .toList())
-                .build();
+    public UserProfile getProfileByUserId(String userId) {
+        return userProfileRepository.findByUser_UserId(userId).orElse(null);
     }
 }

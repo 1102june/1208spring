@@ -3,13 +3,10 @@ package com.example.youth.service;
 import com.example.youth.dto.ChatResponse;
 import com.example.youth.repository.PolicyRepository;
 import com.example.youth.repository.HousingRepository;
-import com.example.youth.repository.ChatHistoryRepository;
 import com.example.youth.DB.Policy;
 import com.example.youth.DB.Housing;
-import com.example.youth.DB.ChatHistory;
-import com.example.youth.DB.User;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -34,7 +31,6 @@ public class GeminiService {
     private final ProfanityFilterService profanityFilterService;
     private final PolicyRepository policyRepository;
     private final HousingRepository housingRepository;
-    private final ChatHistoryRepository chatHistoryRepository;
 
     @Value("${gemini.api.key}")
     private String apiKey;
@@ -49,26 +45,15 @@ public class GeminiService {
     public GeminiService(
             ProfanityFilterService profanityFilterService,
             PolicyRepository policyRepository,
-            HousingRepository housingRepository,
-            ChatHistoryRepository chatHistoryRepository) {
+            HousingRepository housingRepository) {
         this.profanityFilterService = profanityFilterService;
         this.policyRepository = policyRepository;
         this.housingRepository = housingRepository;
-        this.chatHistoryRepository = chatHistoryRepository;
         this.objectMapper = new ObjectMapper();
     }
 
     @PostConstruct
     public void init() {
-        // API 키 검증
-        if (apiKey == null || apiKey.trim().isEmpty()) {
-            throw new IllegalStateException(
-                "GEMINI_API_KEY 환경 변수가 설정되지 않았습니다. " +
-                "Gemini API 키를 생성하고 환경 변수로 설정해주세요. " +
-                "https://aistudio.google.com/app/apikey 에서 API 키를 생성할 수 있습니다."
-            );
-        }
-        
         this.webClient = WebClient.builder()
                 .baseUrl(baseUrl)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
@@ -127,29 +112,15 @@ public class GeminiService {
                 .bodyToMono(String.class)
                 .map(response -> {
                     System.out.println("Gemini API Response: " + response);
-                    ChatResponse chatResponse = parseGeminiResponse(response, message);
-                    
-                    // 대화 기록 저장 (사용자 ID가 있는 경우에만)
-                    if (userId != null && !userId.trim().isEmpty()) {
-                        saveChatHistory(userId, message, chatResponse);
-                    }
-                    
-                    return chatResponse;
+                    return parseGeminiResponse(response, message);
                 })
                 .onErrorResume(e -> {
                     // 에러 발생 시 기본 응답 반환
                     e.printStackTrace();
-                    ChatResponse errorResponse = ChatResponse.builder()
+                    return Mono.just(ChatResponse.builder()
                             .response("죄송합니다. 일시적인 오류가 발생했습니다: " + e.getMessage())
                             .actionLinks(new ArrayList<>())
-                            .build();
-                    
-                    // 에러 응답도 기록 저장 (사용자 ID가 있는 경우에만)
-                    if (userId != null && !userId.trim().isEmpty()) {
-                        saveChatHistory(userId, message, errorResponse);
-                    }
-                    
-                    return Mono.just(errorResponse);
+                            .build());
                 });
     }
 
@@ -264,37 +235,6 @@ public class GeminiService {
         }
         
         return links;
-    }
-
-    /**
-     * 챗봇 대화 기록 저장
-     */
-    private void saveChatHistory(String userId, String userMessage, ChatResponse chatResponse) {
-        try {
-            // 액션 링크를 JSON 형태로 변환
-            String actionLinksJson = null;
-            if (chatResponse.getActionLinks() != null && !chatResponse.getActionLinks().isEmpty()) {
-                actionLinksJson = objectMapper.writeValueAsString(chatResponse.getActionLinks());
-            }
-
-            // User 엔티티 조회 (간단한 참조만 필요하므로 프록시로 충분)
-            User user = new User();
-            user.setUserId(userId);
-
-            ChatHistory chatHistory = ChatHistory.builder()
-                    .user(user)
-                    .userMessage(userMessage)
-                    .botResponse(chatResponse.getResponse())
-                    .actionLinks(actionLinksJson)
-                    .createdAt(java.time.LocalDateTime.now())
-                    .build();
-
-            chatHistoryRepository.save(chatHistory);
-        } catch (Exception e) {
-            // 대화 기록 저장 실패는 로그만 남기고 계속 진행
-            System.err.println("챗봇 대화 기록 저장 실패: " + e.getMessage());
-            e.printStackTrace();
-        }
     }
 }
 

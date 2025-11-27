@@ -2,11 +2,14 @@ package com.example.youth.controller;
 
 import com.example.youth.dto.ApiResponse;
 import com.example.youth.dto.PolicyResponse;
+import com.example.youth.dto.publicdata.YouthPolicyResponse;
 import com.example.youth.service.PolicyService;
 import com.example.youth.service.PolicySyncService;
+import com.example.youth.service.PublicDataApiService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Mono;
 
 import java.util.List;
 
@@ -18,6 +21,9 @@ public class PolicyController {
     private PolicyService policyService;
 
     @Autowired
+    private PublicDataApiService publicDataApiService;
+
+    @Autowired
     private PolicySyncService policySyncService;
 
     /**
@@ -26,17 +32,9 @@ public class PolicyController {
      */
     @GetMapping("/active")
     public ResponseEntity<ApiResponse<List<PolicyResponse>>> getActivePolicies(
-            @RequestParam(required = false, defaultValue = "test-user") String userId,
-            @RequestParam(required = false) String category) {
+            @RequestParam(required = false, defaultValue = "test-user") String userId) {
         try {
-            List<PolicyResponse> policies;
-
-            // category 파라미터가 있으면 카테고리별 활성 정책 조회
-            if (category != null && !category.isEmpty()) {
-                policies = policyService.getActivePoliciesByCategory(category, userId);
-            } else {
-                policies = policyService.getActivePolicies(userId);
-            }
+            List<PolicyResponse> policies = policyService.getActivePolicies(userId);
             return ResponseEntity.ok(ApiResponse.success(policies));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()

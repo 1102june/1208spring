@@ -1,8 +1,9 @@
 package com.example.youth.controller;
 
-import com.example.youth.DB.User;
 import com.example.youth.DB.LoginType;
 import com.example.youth.DB.OSType;
+import com.example.youth.DB.User;
+import com.example.youth.DB.UserProfile;
 import com.example.youth.dto.ApiResponse;
 import com.example.youth.dto.ProfileRequest;
 import com.example.youth.dto.PushTokenRequest;
@@ -13,8 +14,6 @@ import com.google.firebase.auth.FirebaseToken;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/auth")
@@ -35,6 +34,53 @@ public class UserController {
     }
 
     /**
+     * 프로필 조회
+     * GET /auth/profile
+     */
+    @GetMapping("/profile")
+    public ResponseEntity<ApiResponse<com.example.youth.DB.UserProfile>> getProfile(
+            @RequestHeader("Authorization") String idToken) {
+        try {
+            // Firebase ID Token 검증
+            String token = idToken.replace("Bearer ", "");
+            FirebaseToken decodedToken = firebaseAuthService.verifyToken(token);
+            String uid = decodedToken.getUid();
+            String email = decodedToken.getEmail();
+
+            // UID로 사용자 확인
+            User user = userService.getUserByUid(uid);
+            
+            // UID로 찾을 수 없으면 이메일로 확인
+            if (user == null && email != null) {
+                user = userService.getUserByEmail(email);
+                // 이메일로 찾은 사용자가 있으면 UID 업데이트
+                if (user != null) {
+                    user.setUserId(uid);
+                    userService.updateUser(user);
+                }
+            }
+
+            if (user == null) {
+                return ResponseEntity.status(404)
+                        .body(ApiResponse.error("사용자를 찾을 수 없습니다."));
+            }
+
+            // 프로필 조회
+            com.example.youth.DB.UserProfile profile = userService.getProfileByUserId(user.getUserId());
+            
+            if (profile == null) {
+                return ResponseEntity.status(404)
+                        .body(ApiResponse.error("프로필을 찾을 수 없습니다."));
+            }
+
+            return ResponseEntity.ok(ApiResponse.success("프로필 조회 성공", profile));
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(ApiResponse.error("서버 오류가 발생했습니다: " + e.getMessage()));
+        }
+    }
+
+    /**
      * 프로필 저장/업데이트
      * POST /auth/profile
      */
@@ -44,24 +90,42 @@ public class UserController {
             // 1) Firebase ID Token 검증
             FirebaseToken decodedToken = firebaseAuthService.verifyToken(profileRequest.getIdToken());
             String uid = decodedToken.getUid();
+            String email = decodedToken.getEmail();
 
-            // 2) User가 없으면 자동 생성 (Google 로그인 사용자 최초 프로필 저장 시)
-            User existingUser = userService.getUserByUid(uid);
-            if (existingUser == null) {
-                User newUser = User.builder()
-                        .userId(uid)
-                        .email(decodedToken.getEmail())
-                        .emailVerified(true) // Firebase 이메일 인증 완료 상태로 간주
-                        .loginType(LoginType.google)
-                        .osType(OSType.android)
-                        .passwordHash("") // 소셜 로그인 계정은 별도 비밀번호 없이 빈 값으로 저장
-                        .createdAt(LocalDateTime.now())
-                        .build();
-                userService.registerUser(newUser);
+            // 2) 사용자 확인 및 생성/업데이트
+            User user = userService.getUserByUid(uid);
+            
+            if (user == null) {
+                // UID로 사용자를 찾을 수 없으면
+                // 이메일로 기존 사용자 확인
+                User existingUserByEmail = userService.getUserByEmail(email);
+                
+                if (existingUserByEmail != null) {
+                    // 기존 사용자가 있으면 UID를 업데이트 (같은 이메일 = 같은 사용자)
+                    existingUserByEmail.setUserId(uid);
+                    existingUserByEmail.setEmailVerified(true);
+                    existingUserByEmail.setLoginType(LoginType.google);
+                    existingUserByEmail.setOsType(OSType.android);
+                    userService.updateUser(existingUserByEmail);
+                    user = existingUserByEmail;
+                } else {
+                    // 완전히 새로운 사용자면 생성
+                    User newUser = User.builder()
+                            .userId(uid)
+                            .email(email != null ? email : "")
+                            .emailVerified(true) // Google 로그인은 이메일 인증 완료
+                            .passwordHash("") // Google 로그인은 비밀번호 없음 (빈 문자열)
+                            .loginType(LoginType.google)
+                            .osType(OSType.android)
+                            .createdAt(java.time.LocalDateTime.now())
+                            .build();
+                    userService.registerUser(newUser);
+                    user = newUser;
+                }
             }
 
-            // 3) 프로필 저장
-            userService.saveOrUpdateProfile(uid, profileRequest);
+            // 3) 프로필 저장 (기존 프로필이 있으면 업데이트, 없으면 생성)
+            userService.saveOrUpdateProfile(user.getUserId(), profileRequest);
 
             return ResponseEntity.ok(ApiResponse.success("프로필이 저장되었습니다.", null));
         } catch (Exception e) {

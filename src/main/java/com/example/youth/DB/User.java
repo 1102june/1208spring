@@ -20,14 +20,7 @@ public class User {
 
     // 🔥 OTP 인증 여부 관리 (Firebase 이메일 인증 X)
     @Column(nullable = false)
-    @Builder.Default
     private boolean emailVerified = false;
-
-    // 탈퇴 여부 (Y: 활성, N: 탈퇴)
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 1)
-    @Builder.Default
-    private ActiveStatus isActive = ActiveStatus.Y;
 
     @Column(nullable = true, length = 255)
     private String passwordHash;
@@ -68,5 +61,5 @@ public class User {
     private List<Notification> notifications;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
-    private List<ChatHistory> chatHistories;
+    private List<AIRecommendation> aiRecommendations;
 }

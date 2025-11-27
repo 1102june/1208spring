@@ -33,12 +33,7 @@ public class LoginController {
                 return ResponseEntity.status(404).body("USER_NOT_FOUND");
             }
 
-            // 3) 🔥 OTP 이메일 인증 여부 체크
-            if (!user.isEmailVerified()) {
-                return ResponseEntity.status(403).body("EMAIL_NOT_VERIFIED");
-            }
-
-            // 4) 로그인 성공
+            // 3) 로그인 성공 (Firebase 이메일 인증 체크 제거 - Gmail SMTP 사용)
             return ResponseEntity.ok("LOGIN_SUCCESS");
 
         } catch (Exception e) {

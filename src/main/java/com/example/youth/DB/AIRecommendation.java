@@ -7,25 +7,20 @@ import com.example.youth.DB.User;
 import com.example.youth.common.ContentType;
 
 
-
 @Entity
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class Bookmark {
+public class AIRecommendation {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long bookmarkId;
+    private Long recId;
 
     @ManyToOne
     @JoinColumn(name = "user_id")
     private User user;
 
     @Enumerated(EnumType.STRING)
-    private ContentType contentType; // policy or housing
+    private ContentType contentType;
 
     private String contentId;
-
-    @Enumerated(EnumType.STRING)
-    private ActiveStatus isActive = ActiveStatus.Y;
-
     private LocalDateTime createdAt = LocalDateTime.now();
 }

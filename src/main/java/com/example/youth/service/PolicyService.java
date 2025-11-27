@@ -71,15 +71,6 @@ public class PolicyService {
                 .collect(Collectors.toList());
     }
 
-    // 활성 정책 + 카테고리별 정책 목록 조회
-    public List<PolicyResponse> getActivePoliciesByCategory(String category, String userId) {
-        Date currentDate = new Date();
-        List<Policy> policies = policyRepository.findActivePoliciesByCategory(currentDate, category);
-        return policies.stream()
-                .map(policy -> convertToResponse(policy, userId))
-                .collect(Collectors.toList());
-    }
-
     // 나이에 맞는 정책 조회
     public List<PolicyResponse> getPoliciesByAge(Integer age, String userId) {
         List<Policy> policies = policyRepository.findPoliciesByAge(age);

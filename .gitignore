@@ -42,10 +42,3 @@ out/
 !package.json
 !package-lock.json
 !tsconfig.json
-
-### Local Configuration ###
-application-local.yml
-application-local.properties
-.env
-.env.local
-.env.*.local
