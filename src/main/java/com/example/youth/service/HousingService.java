@@ -1,18 +1,21 @@
 package com.example.youth.service;
 
-import com.example.youth.DB.Housing;
-import com.example.youth.DB.HousingNotice;
-import com.example.youth.DB.HousingComplex;
-import com.example.youth.dto.HousingResponse;
-import com.example.youth.repository.BookmarkRepository;
-import com.example.youth.repository.HousingRepository;
-import com.example.youth.repository.HousingNoticeRepository;
-import com.example.youth.repository.HousingComplexRepository;
-import com.example.youth.common.ContentType;
 import com.example.youth.DB.ActiveStatus;
+import com.example.youth.DB.Housing;
+import com.example.youth.DB.HousingComplex;
+import com.example.youth.DB.HousingNotice;
+import com.example.youth.common.ContentType;
+import com.example.youth.dto.HousingResponse;
+import com.example.youth.dto.UserProfileResponse;
+import com.example.youth.repository.BookmarkRepository;
+import com.example.youth.repository.HousingComplexRepository;
+import com.example.youth.repository.HousingNoticeRepository;
+import com.example.youth.repository.HousingRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -50,6 +53,9 @@ public class HousingService {
 
     @Autowired
     private BookmarkRepository bookmarkRepository;
+
+    @Autowired
+    private UserService userService;
 
     /**
      * HousingNotice와 HousingComplex를 병합하여 HousingResponse로 변환
@@ -290,36 +296,79 @@ public class HousingService {
         Date currentDate = new Date();
         List<HousingNotice> activeNotices = housingNoticeRepository.findActiveNotices(currentDate);
         List<HousingComplex> allComplexes = housingComplexRepository.findAll();
-        
+
         List<HousingResponse> merged = mergeNoticesAndComplexes(activeNotices, allComplexes, userId, userLat, userLon);
-        
+
         int searchRadius = radius != null ? radius : 5000; // 기본 5km
         int maxResults = limit != null ? limit : 50;
-        
-        return merged.stream()
+
+        // 프로필 기반 지역 추천을 위해 사용자 프로필 조회 (실패 시에는 지역 필터 없이 진행)
+        String profileRegion = null;
+        try {
+            UserProfileResponse profile = userService.getUserProfile(userId);
+            profileRegion = profile.getRegion();
+        } catch (Exception ignored) {
+        }
+        final String userRegion = profileRegion;
+
+        // 신청 기간이 현재 날짜 기준으로 남아있는 주택만 사용
+        LocalDate today = LocalDate.now();
+        List<HousingResponse> activeOnly = merged.stream()
                 .filter(housing -> {
-                    // 좌표가 있는 경우만 필터링
-                    if (housing.getLatitude() == null || housing.getLongitude() == null) {
+                    if (housing.getApplicationEnd() == null) {
                         return false;
                     }
-                    // 사용자 위치가 제공된 경우 반경 내 필터링
-                    if (userLat != null && userLon != null) {
+                    LocalDate endDate = housing.getApplicationEnd().toInstant()
+                            .atZone(ZoneId.systemDefault())
+                            .toLocalDate();
+                    return !endDate.isBefore(today);
+                })
+                .collect(Collectors.toList());
+
+        // 사용자 위치가 있는 경우: 반경 + 거리순 추천
+        if (userLat != null && userLon != null) {
+            return activeOnly.stream()
+                    .filter(housing -> {
+                        if (housing.getLatitude() == null || housing.getLongitude() == null) {
+                            return false;
+                        }
                         double distance = DistanceCalculator.calculateDistance(
                                 userLat, userLon,
                                 housing.getLatitude(), housing.getLongitude()
                         );
                         return distance <= searchRadius;
+                    })
+                    .sorted((h1, h2) -> {
+                        if (h1.getDistanceFromUser() == null && h2.getDistanceFromUser() == null) {
+                            return 0;
+                        }
+                        if (h1.getDistanceFromUser() == null) return 1;
+                        if (h2.getDistanceFromUser() == null) return -1;
+                        return Double.compare(h1.getDistanceFromUser(), h2.getDistanceFromUser());
+                    })
+                    .limit(maxResults)
+                    .collect(Collectors.toList());
+        }
+
+        // 위치 정보가 없을 때: 사용자 지역(도/시) 기준 필터 + 마감일 순 정렬
+        return activeOnly.stream()
+                .filter(housing -> {
+                    // 사용자 지역 정보가 있을 경우, 주소에 해당 지역이 포함된 것 우선
+                    if (userRegion != null && housing.getAddress() != null) {
+                        return housing.getAddress().contains(userRegion);
                     }
+                    // 지역 정보가 없으면 전체 활성 임대주택을 후보로 유지
                     return true;
                 })
                 .sorted((h1, h2) -> {
-                    // 거리순 정렬 (거리가 가까운 순)
-                    if (h1.getDistanceFromUser() == null && h2.getDistanceFromUser() == null) {
-                        return 0;
-                    }
-                    if (h1.getDistanceFromUser() == null) return 1;
-                    if (h2.getDistanceFromUser() == null) return -1;
-                    return Double.compare(h1.getDistanceFromUser(), h2.getDistanceFromUser());
+                    // 우선 신청 마감일 기준 오름차순 정렬
+                    LocalDate end1 = h1.getApplicationEnd() != null
+                            ? h1.getApplicationEnd().toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
+                            : LocalDate.MAX;
+                    LocalDate end2 = h2.getApplicationEnd() != null
+                            ? h2.getApplicationEnd().toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
+                            : LocalDate.MAX;
+                    return end1.compareTo(end2);
                 })
                 .limit(maxResults)
                 .collect(Collectors.toList());

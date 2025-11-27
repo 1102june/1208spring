@@ -61,6 +61,24 @@ public class PolicyController {
     }
 
     /**
+     * 사용자 프로필 기반 맞춤 정책 추천 목록 조회
+     * GET /api/policy/recommended?userId={userId}&category={category}&limit={limit}
+     */
+    @GetMapping("/recommended")
+    public ResponseEntity<ApiResponse<List<PolicyResponse>>> getPersonalizedPolicies(
+            @RequestParam(required = false, defaultValue = "test-user") String userId,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) Integer limit) {
+        try {
+            List<PolicyResponse> policies = policyService.getPersonalizedPolicies(userId, category, limit);
+            return ResponseEntity.ok(ApiResponse.success(policies));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("맞춤 정책 조회 중 오류 발생: " + e.getMessage()));
+        }
+    }
+
+    /**
      * 정책 상세 조회
      * GET /api/policy/{policyId}?userId={userId}
      */

@@ -1,6 +1,8 @@
 package com.example.youth.controller;
 
 import com.example.youth.DB.User;
+import com.example.youth.DB.LoginType;
+import com.example.youth.DB.OSType;
 import com.example.youth.dto.ApiResponse;
 import com.example.youth.dto.ProfileRequest;
 import com.example.youth.dto.PushTokenRequest;
@@ -11,6 +13,8 @@ import com.google.firebase.auth.FirebaseToken;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/auth")
@@ -41,7 +45,22 @@ public class UserController {
             FirebaseToken decodedToken = firebaseAuthService.verifyToken(profileRequest.getIdToken());
             String uid = decodedToken.getUid();
 
-            // 2) 프로필 저장
+            // 2) User가 없으면 자동 생성 (Google 로그인 사용자 최초 프로필 저장 시)
+            User existingUser = userService.getUserByUid(uid);
+            if (existingUser == null) {
+                User newUser = User.builder()
+                        .userId(uid)
+                        .email(decodedToken.getEmail())
+                        .emailVerified(true) // Firebase 이메일 인증 완료 상태로 간주
+                        .loginType(LoginType.google)
+                        .osType(OSType.android)
+                        .passwordHash("") // 소셜 로그인 계정은 별도 비밀번호 없이 빈 값으로 저장
+                        .createdAt(LocalDateTime.now())
+                        .build();
+                userService.registerUser(newUser);
+            }
+
+            // 3) 프로필 저장
             userService.saveOrUpdateProfile(uid, profileRequest);
 
             return ResponseEntity.ok(ApiResponse.success("프로필이 저장되었습니다.", null));
