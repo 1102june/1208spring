@@ -30,8 +30,14 @@ public class MainController {
                     .body(ApiResponse.error("사용자 ID가 필요합니다."));
         }
 
-        MainPageResponse mainPageData = mainService.getMainPageData(userId);
-        return ResponseEntity.ok(ApiResponse.success("메인 페이지 데이터 조회 성공", mainPageData));
+        try {
+            MainPageResponse mainPageData = mainService.getMainPageData(userId);
+            return ResponseEntity.ok(ApiResponse.success("메인 페이지 데이터 조회 성공", mainPageData));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500)
+                    .body(ApiResponse.error("메인 페이지 데이터 조회 중 오류 발생: " + e.getMessage()));
+        }
     }
 }
 

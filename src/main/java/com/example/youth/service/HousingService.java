@@ -6,6 +6,8 @@ import com.example.youth.DB.HousingComplex;
 import com.example.youth.DB.HousingNotice;
 import com.example.youth.common.ContentType;
 import com.example.youth.dto.HousingResponse;
+import com.example.youth.dto.HousingComplexResponse;
+import com.example.youth.dto.HousingNoticeResponse;
 import com.example.youth.dto.UserProfileResponse;
 import com.example.youth.repository.BookmarkRepository;
 import com.example.youth.repository.HousingComplexRepository;
@@ -323,9 +325,8 @@ public class HousingService {
                     if (housing.getApplicationEnd() == null) {
                         return false;
                     }
-                    LocalDate endDate = housing.getApplicationEnd().toInstant()
-                            .atZone(ZoneId.systemDefault())
-                            .toLocalDate();
+                    // java.sql.Date를 LocalDate로 직접 변환
+                    LocalDate endDate = housing.getApplicationEnd().toLocalDate();
                     return !endDate.isBefore(today);
                 })
                 .collect(Collectors.toList());
@@ -368,10 +369,10 @@ public class HousingService {
                 .sorted((h1, h2) -> {
                     // 우선 신청 마감일 기준 오름차순 정렬
                     LocalDate end1 = h1.getApplicationEnd() != null
-                            ? h1.getApplicationEnd().toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
+                            ? h1.getApplicationEnd().toLocalDate()
                             : LocalDate.MAX;
-                    LocalDate end2 = h2.getApplicationEnd() != null
-                            ? h2.getApplicationEnd().toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
+                        LocalDate end2 = h2.getApplicationEnd() != null
+                            ? h2.getApplicationEnd().toLocalDate()
                             : LocalDate.MAX;
                     return end1.compareTo(end2);
                 })
@@ -396,6 +397,211 @@ public class HousingService {
         }
         
         return convertToResponse(notice, complex, userId, userLat, userLon);
+    }
+    
+    /**
+     * 단지정보를 HousingComplexResponse로 변환
+     */
+    private HousingComplexResponse convertComplexToResponse(HousingComplex complex, String userId, Double userLat, Double userLon) {
+        boolean isBookmarked = false;
+        if (complex.getComplexId() != null && userId != null) {
+            isBookmarked = bookmarkRepository
+                    .findByUser_UserIdAndContentTypeAndContentId(userId, ContentType.housing, complex.getComplexId())
+                    .map(bookmark -> bookmark.getIsActive() == ActiveStatus.Y)
+                    .orElse(false);
+        }
+        
+        HousingComplexResponse.HousingComplexResponseBuilder builder = HousingComplexResponse.builder()
+                .complexId(complex.getComplexId())
+                .hsmpNm(complex.getHsmpNm())
+                .insttNm(complex.getInsttNm())
+                .brtcNm(complex.getBrtcNm())
+                .signguNm(complex.getSignguNm())
+                .rnAdres(complex.getRnAdres())
+                .completeDate(complex.getCompleteDate())
+                .totalUnits(complex.getTotalUnits())
+                .suplyTyNm(complex.getSuplyTyNm())
+                .styleNm(complex.getStyleNm())
+                .supplyArea(complex.getSupplyArea())
+                .houseTyNm(complex.getHouseTyNm())
+                .heatMthdDetailNm(complex.getHeatMthdDetailNm())
+                .buldStleNm(complex.getBuldStleNm())
+                .elevator(complex.getElevator())
+                .parkingSpaces(complex.getParkingSpaces())
+                .deposit(complex.getDeposit())
+                .monthlyRent(complex.getMonthlyRent())
+                .latitude(complex.getLatitude())
+                .longitude(complex.getLongitude())
+                .isBookmarked(isBookmarked);
+        
+        HousingComplexResponse response = builder.build();
+        
+        // 사용자 위치가 제공된 경우 거리 계산
+        if (userLat != null && userLon != null && 
+            response.getLatitude() != null && response.getLongitude() != null) {
+            double distance = DistanceCalculator.calculateDistance(
+                    userLat, userLon, 
+                    response.getLatitude(), response.getLongitude()
+            );
+            response.setDistanceFromUser(distance);
+        }
+        
+        return response;
+    }
+    
+    /**
+     * 공고문을 HousingNoticeResponse로 변환
+     */
+    private HousingNoticeResponse convertNoticeToResponse(HousingNotice notice, String userId) {
+        boolean isBookmarked = false;
+        if (notice.getNoticeId() != null && userId != null) {
+            isBookmarked = bookmarkRepository
+                    .findByUser_UserIdAndContentTypeAndContentId(userId, ContentType.housing, notice.getNoticeId())
+                    .map(bookmark -> bookmark.getIsActive() == ActiveStatus.Y)
+                    .orElse(false);
+        }
+        
+        // 매칭된 단지정보 조회
+        HousingComplexResponse matchedComplex = null;
+        if (notice.getHsmpSn() != null) {
+            Optional<HousingComplex> complexOpt = housingComplexRepository.findById(notice.getHsmpSn());
+            if (complexOpt.isPresent()) {
+                matchedComplex = convertComplexToResponse(complexOpt.get(), userId, null, null);
+            }
+        }
+        if (matchedComplex == null && notice.getHsmpNm() != null) {
+            Optional<HousingComplex> complexOpt = housingComplexRepository.findByHsmpNm(notice.getHsmpNm());
+            if (complexOpt.isPresent()) {
+                matchedComplex = convertComplexToResponse(complexOpt.get(), userId, null, null);
+            }
+        }
+        
+        return HousingNoticeResponse.builder()
+                .noticeId(notice.getNoticeId())
+                .hsmpSn(notice.getHsmpSn())
+                .hsmpNm(notice.getHsmpNm())
+                .panId(notice.getPanId())
+                .panNm(notice.getPanNm())
+                .dtlUrl(notice.getDtlUrl())
+                .panNtStDt(notice.getPanNtStDt())
+                .clsgDt(notice.getClsgDt())
+                .panDt(notice.getPanDt())
+                .applicationStart(notice.getApplicationStart())
+                .applicationEnd(notice.getApplicationEnd())
+                .cnpCdNm(notice.getCnpCdNm())
+                .uppAisTpNm(notice.getUppAisTpNm())
+                .aisTpCdNm(notice.getAisTpCdNm())
+                .panSs(notice.getPanSs())
+                .isBookmarked(isBookmarked)
+                .matchedComplex(matchedComplex)
+                .build();
+    }
+    
+    /**
+     * 단지정보 목록 조회 (사용자 위치 기반)
+     */
+    public List<HousingComplexResponse> getHousingComplexes(
+            String userId, 
+            Double userLat, 
+            Double userLon, 
+            Integer radius, 
+            Integer limit) {
+        
+        List<HousingComplex> allComplexes = housingComplexRepository.findAll();
+        
+        int searchRadius = radius != null ? radius : 5000; // 기본 5km
+        int maxResults = limit != null ? limit : 50;
+        
+        // 사용자 위치가 있는 경우: 반경 + 거리순 추천
+        if (userLat != null && userLon != null) {
+            return allComplexes.stream()
+                    .filter(complex -> {
+                        if (complex.getLatitude() == null || complex.getLongitude() == null) {
+                            return false;
+                        }
+                        double distance = DistanceCalculator.calculateDistance(
+                                userLat, userLon,
+                                complex.getLatitude(), complex.getLongitude()
+                        );
+                        return distance <= searchRadius;
+                    })
+                    .map(complex -> convertComplexToResponse(complex, userId, userLat, userLon))
+                    .sorted((h1, h2) -> {
+                        if (h1.getDistanceFromUser() == null && h2.getDistanceFromUser() == null) {
+                            return 0;
+                        }
+                        if (h1.getDistanceFromUser() == null) return 1;
+                        if (h2.getDistanceFromUser() == null) return -1;
+                        return Double.compare(h1.getDistanceFromUser(), h2.getDistanceFromUser());
+                    })
+                    .limit(maxResults)
+                    .collect(Collectors.toList());
+        }
+        
+        // 위치 정보가 없을 때: 전체 목록 반환
+        return allComplexes.stream()
+                .map(complex -> convertComplexToResponse(complex, userId, null, null))
+                .limit(maxResults)
+                .collect(Collectors.toList());
+    }
+    
+    /**
+     * 공고문 목록 조회 (활성 공고만)
+     */
+    public List<HousingNoticeResponse> getHousingNotices(
+            String userId, 
+            Integer limit) {
+        
+        try {
+            java.util.Date currentDate = new java.util.Date();
+            System.out.println("HousingService: 공고문 조회 시작, userId = " + userId);
+            List<HousingNotice> activeNotices = housingNoticeRepository.findActiveNotices(currentDate);
+            System.out.println("HousingService: 활성 공고문 개수 = " + (activeNotices != null ? activeNotices.size() : 0));
+            
+            int maxResults = limit != null ? limit : 50;
+            
+            // 신청 기간이 현재 날짜 기준으로 남아있는 공고만 사용 (마감일이 지난 공고는 제외)
+            LocalDate today = LocalDate.now();
+            List<HousingNoticeResponse> result = activeNotices.stream()
+                .filter(notice -> {
+                    // applicationEnd가 null이면 제외 (마감일이 명시되지 않은 공고는 제외)
+                    if (notice.getApplicationEnd() == null) {
+                        return false;
+                    }
+                    // java.sql.Date를 LocalDate로 직접 변환
+                    LocalDate endDate = notice.getApplicationEnd().toLocalDate();
+                    // 마감일이 오늘 이후인 공고만 포함 (오늘 포함)
+                    return !endDate.isBefore(today);
+                })
+                .sorted((n1, n2) -> {
+                    // 신청 마감일 기준 오름차순 정렬
+                    LocalDate end1 = n1.getApplicationEnd() != null
+                            ? n1.getApplicationEnd().toLocalDate()
+                            : LocalDate.MAX;
+                    LocalDate end2 = n2.getApplicationEnd() != null
+                            ? n2.getApplicationEnd().toLocalDate()
+                            : LocalDate.MAX;
+                    return end1.compareTo(end2);
+                })
+                .map(notice -> {
+                    try {
+                        return convertNoticeToResponse(notice, userId);
+                    } catch (Exception e) {
+                        System.err.println("HousingService: 공고문 변환 중 오류: " + e.getMessage());
+                        return null;
+                    }
+                })
+                .filter(response -> response != null)
+                .limit(maxResults)
+                .collect(Collectors.toList());
+            
+            System.out.println("HousingService: 최종 공고문 개수 = " + result.size());
+            return result;
+        } catch (Exception e) {
+            System.err.println("HousingService: 공고문 조회 중 오류: " + e.getMessage());
+            e.printStackTrace();
+            return new java.util.ArrayList<>();
+        }
     }
 }
 

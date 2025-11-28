@@ -2,6 +2,8 @@ package com.example.youth.controller;
 
 import com.example.youth.dto.ApiResponse;
 import com.example.youth.dto.HousingResponse;
+import com.example.youth.dto.HousingComplexResponse;
+import com.example.youth.dto.HousingNoticeResponse;
 import com.example.youth.dto.publicdata.LHRentalHouseListResponse;
 import com.example.youth.dto.publicdata.LHRentalNoticeResponse;
 import com.example.youth.service.HousingService;
@@ -152,6 +154,54 @@ public class HousingController {
             return ResponseEntity.internalServerError()
                     .body(ApiResponse.error("housing_notice 동기화 중 오류 발생: " + e.getMessage()));
         }
+    }
+
+    /**
+     * 단지정보 목록 조회 (분리된 API)
+     * GET /api/housing/complexes?userId={userId}&lat={lat}&lon={lon}&radius={radius}&limit={limit}
+     */
+    @GetMapping("/complexes")
+    public ResponseEntity<ApiResponse<List<HousingComplexResponse>>> getHousingComplexes(
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestParam(required = false) String userIdParam,
+            @RequestParam(required = false) Double lat,
+            @RequestParam(required = false) Double lon,
+            @RequestParam(required = false) Integer radius,
+            @RequestParam(required = false) Integer limit) {
+        
+        String finalUserId = userId != null ? userId : userIdParam;
+        
+        if (finalUserId == null || finalUserId.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("사용자 ID가 필요합니다."));
+        }
+
+        List<HousingComplexResponse> complexes = housingService.getHousingComplexes(
+                finalUserId, lat, lon, radius, limit);
+        
+        return ResponseEntity.ok(ApiResponse.success("단지정보 목록 조회 성공", complexes));
+    }
+
+    /**
+     * 공고문 목록 조회 (분리된 API)
+     * GET /api/housing/notices?userId={userId}&limit={limit}
+     */
+    @GetMapping("/notices")
+    public ResponseEntity<ApiResponse<List<HousingNoticeResponse>>> getHousingNotices(
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestParam(required = false) String userIdParam,
+            @RequestParam(required = false) Integer limit) {
+        
+        String finalUserId = userId != null ? userId : userIdParam;
+        
+        if (finalUserId == null || finalUserId.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("사용자 ID가 필요합니다."));
+        }
+
+        List<HousingNoticeResponse> notices = housingService.getHousingNotices(finalUserId, limit);
+        
+        return ResponseEntity.ok(ApiResponse.success("공고문 목록 조회 성공", notices));
     }
 }
 

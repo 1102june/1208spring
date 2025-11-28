@@ -22,7 +22,7 @@ public interface HousingNoticeRepository extends JpaRepository<HousingNotice, St
     // Find notices by complex name
     List<HousingNotice> findByHsmpNm(String hsmpNm);
 
-    // 신청 기간 내 공고 조회
+    // 신청 기간 내 공고 조회 (마감일이 남아있는 공고만, applicationEnd가 null이거나 지난 공고는 제외)
 
     // Fetch notices whose application window includes the provided date
     @Query("SELECT n FROM HousingNotice n WHERE n.applicationStart <= :currentDate AND n.applicationEnd >= :currentDate")

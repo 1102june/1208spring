@@ -16,7 +16,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -103,58 +102,85 @@ public class PolicyService {
      * - 점수 기반 정렬 후 상위 N개만 반환
      */
     public List<PolicyResponse> getPersonalizedPolicies(String userId, String category, Integer limit) {
-        // 1. 사용자 프로필 조회 (없으면 기존 활성 정책 반환)
-        UserProfileResponse profile = null;
         try {
-            profile = userService.getUserProfile(userId);
-        } catch (Exception e) {
-            // 프로필이 없으면 기존 활성 정책 목록을 그대로 반환
-            return (category != null && !category.isEmpty())
-                    ? getActivePoliciesByCategory(category, userId)
-                    : getActivePolicies(userId);
-        }
+            // 1. 사용자 프로필 조회 (없으면 기존 활성 정책 반환)
+            UserProfileResponse profile = null;
+            try {
+                profile = userService.getUserProfile(userId);
+            } catch (Exception e) {
+                System.err.println("PolicyService: 프로필 조회 중 오류: " + e.getMessage());
+                e.printStackTrace();
+                // 프로필이 없으면 기존 활성 정책 목록을 그대로 반환
+                return (category != null && !category.isEmpty())
+                        ? getActivePoliciesByCategory(category, userId)
+                        : getActivePolicies(userId);
+            }
 
-        // 프로필이 null이면 활성 정책 반환
-        if (profile == null) {
-            return (category != null && !category.isEmpty())
-                    ? getActivePoliciesByCategory(category, userId)
-                    : getActivePolicies(userId);
-        }
+            // 프로필이 null이면 활성 정책 반환
+            if (profile == null) {
+                return (category != null && !category.isEmpty())
+                        ? getActivePoliciesByCategory(category, userId)
+                        : getActivePolicies(userId);
+            }
 
-        Integer age = profile.getAge();
-        String userRegion = profile.getRegion();
-        List<String> interests = profile.getInterests();
+            Integer age = profile.getAge();
+            String userRegion = profile.getRegion();
+            List<String> profileInterests = profile.getInterests();
+            
+            // interests가 null이면 빈 리스트로 초기화, 불변 리스트일 수 있으므로 가변 리스트로 복사
+            final List<String> interests = (profileInterests == null) 
+                    ? new java.util.ArrayList<>() 
+                    : new java.util.ArrayList<>(profileInterests);
 
-        // 2. 활성 정책(선택 카테고리 포함) 조회
-        Date currentDate = new Date();
-        List<Policy> activePolicies;
-        if (category != null && !category.isEmpty()) {
-            activePolicies = policyRepository.findActivePoliciesByCategory(currentDate, category);
-        } else {
-            activePolicies = policyRepository.findActivePolicies(currentDate);
-        }
-        
-        // activePolicies가 null이면 빈 리스트 반환
-        if (activePolicies == null) {
-            activePolicies = new java.util.ArrayList<>();
-        }
+            // 2. 활성 정책(선택 카테고리 포함) 조회
+            Date currentDate = new Date();
+            List<Policy> activePolicies;
+            try {
+                if (category != null && !category.isEmpty()) {
+                    activePolicies = policyRepository.findActivePoliciesByCategory(currentDate, category);
+                } else {
+                    activePolicies = policyRepository.findActivePolicies(currentDate);
+                }
+                
+                // activePolicies가 null이면 빈 리스트 반환
+                if (activePolicies == null) {
+                    activePolicies = new java.util.ArrayList<>();
+                } else {
+                    // activePolicies가 불변 리스트일 수 있으므로 가변 리스트로 복사
+                    activePolicies = new java.util.ArrayList<>(activePolicies);
+                }
+            } catch (Exception e) {
+                System.err.println("PolicyService: 활성 정책 조회 중 오류: " + e.getMessage());
+                e.printStackTrace();
+                activePolicies = new java.util.ArrayList<>();
+            }
 
-        // 3. 점수 계산 + 필터링
-        LocalDate today = LocalDate.now();
-        int maxResults = (limit != null && limit > 0) ? limit : 30;
+            // 3. 점수 계산 + 필터링
+            LocalDate today = LocalDate.now();
+            // limit이 null이거나 0 이하면 기본값 35개 반환 (30~40개 범위)
+            int maxResults = (limit != null && limit > 0) ? limit : 35;
 
-        return activePolicies.stream()
-                // 신청 기간이 현재 날짜 기준으로 남아있는 정책만 사용
-                // applicationEnd가 null이면 기간 제한 없는 정책으로 간주하여 포함
+            System.out.println("PolicyService: 활성 정책 개수 = " + activePolicies.size() + ", maxResults = " + maxResults);
+
+            // activePolicies를 가변 리스트로 변환 (불변 리스트일 수 있으므로)
+            List<Policy> mutablePolicies = new java.util.ArrayList<>(activePolicies);
+            
+            return mutablePolicies.stream()
+                // 신청 기간이 현재 날짜 기준으로 남아있는 정책만 사용 (마감일이 지난 정책은 제외)
                 .filter(policy -> {
-                    if (policy.getApplicationEnd() == null) {
-                        // applicationEnd가 null이면 기간 제한 없는 정책으로 간주
-                        return true;
+                    try {
+                        // applicationEnd가 null이면 제외 (마감일이 명시되지 않은 정책은 제외)
+                        if (policy.getApplicationEnd() == null) {
+                            return false;
+                        }
+                        // java.sql.Date를 LocalDate로 직접 변환
+                        LocalDate endDate = policy.getApplicationEnd().toLocalDate();
+                        // 마감일이 오늘 이후인 정책만 포함 (오늘 포함)
+                        return !endDate.isBefore(today);
+                    } catch (Exception e) {
+                        System.err.println("PolicyService: 정책 필터링 중 오류: " + e.getMessage());
+                        return false;
                     }
-                    LocalDate endDate = policy.getApplicationEnd().toInstant()
-                            .atZone(ZoneId.systemDefault())
-                            .toLocalDate();
-                    return !endDate.isBefore(today);
                 })
                 .map(policy -> {
                     // 기본 점수: 모든 정책에 기본 점수 부여 (다양한 정책 노출)
@@ -191,16 +217,21 @@ public class PolicyService {
 
                     // 3-3. 관심 카테고리 점수
                     String policyCategory = policy.getCategory();
-                    if (interests != null && policyCategory != null &&
-                            interests.stream().anyMatch(interest -> Objects.equals(interest, policyCategory))) {
-                        score += 20.0;
+                    if (interests != null && !interests.isEmpty() && policyCategory != null) {
+                        try {
+                            if (interests.contains(policyCategory)) {
+                                score += 20.0;
+                            }
+                        } catch (Exception e) {
+                            // interests 조회 중 오류 발생 시 무시하고 계속 진행
+                            System.err.println("PolicyService: 관심 카테고리 점수 계산 중 오류: " + e.getMessage());
+                        }
                     }
 
                     // 3-4. 마감 임박 가중치 (미래일 경우에만)
                     if (policy.getApplicationEnd() != null) {
-                        LocalDate endDate = policy.getApplicationEnd().toInstant()
-                                .atZone(ZoneId.systemDefault())
-                                .toLocalDate();
+                        // java.sql.Date를 LocalDate로 직접 변환
+                        LocalDate endDate = policy.getApplicationEnd().toLocalDate();
                         long daysUntilEnd = ChronoUnit.DAYS.between(today, endDate);
                         if (daysUntilEnd >= 0) {
                             // 마감이 가까울수록 조금 더 높은 점수 (최대 +10, 최소 0)
@@ -216,16 +247,36 @@ public class PolicyService {
                 })
                 // 점수가 0이라도, 사용자에게 노출될 수 있도록 그대로 둠
                 .sorted(Comparator
-                        .comparingDouble(ScoredPolicy::getScore).reversed()
-                        .thenComparing(sp -> {
-                            Date end = sp.policy.getApplicationEnd();
-                            return end != null
-                                    ? end.toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
-                                    : LocalDate.MAX;
+                        .comparingDouble((ScoredPolicy sp) -> sp.getScore()).reversed()
+                        .thenComparing((ScoredPolicy sp) -> {
+                            try {
+                                java.sql.Date end = sp.policy.getApplicationEnd();
+                                if (end == null) {
+                                    return LocalDate.MAX;
+                                }
+                                // java.sql.Date를 LocalDate로 직접 변환
+                                return end.toLocalDate();
+                            } catch (Exception e) {
+                                return LocalDate.MAX;
+                            }
                         }))
                 .limit(maxResults)
-                .map(scored -> convertToResponse(scored.policy, userId))
-                .collect(Collectors.toList());
+                .map(scored -> {
+                    try {
+                        return convertToResponse(scored.policy, userId);
+                    } catch (Exception e) {
+                        System.err.println("PolicyService: 정책 변환 중 오류 (policyId: " + scored.policy.getPolicyId() + "): " + e.getMessage());
+                        e.printStackTrace();
+                        return null;
+                    }
+                })
+                .filter(response -> response != null)
+                .collect(Collectors.toCollection(java.util.ArrayList::new));
+        } catch (Exception e) {
+            System.err.println("PolicyService: getPersonalizedPolicies 전체 오류: " + e.getMessage());
+            e.printStackTrace();
+            throw e;
+        }
     }
 
     /**
