@@ -134,17 +134,46 @@ public class GeminiService {
                                 System.err.println("Error Body: " + errorBody);
                                 
                                 String errorMessage = "Gemini API 오류가 발생했습니다.";
-                                if (response.statusCode().value() == 403) {
-                                    errorMessage = "Gemini API 접근이 거부되었습니다. API 키가 유효하지 않거나 권한이 없습니다. API 키를 확인해주세요.";
-                                    System.err.println("403 오류: API 키가 유효하지 않거나 권한이 없습니다.");
-                                    System.err.println("API 키 확인: " + (apiKey != null && apiKey.length() > 10 
-                                            ? apiKey.substring(0, 10) + "..." 
-                                            : "NULL 또는 빈 문자열"));
-                                } else if (response.statusCode().value() == 400) {
-                                    errorMessage = "Gemini API 요청 형식이 잘못되었습니다.";
-                                } else if (response.statusCode().value() == 429) {
-                                    errorMessage = "Gemini API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.";
+                                
+                                // 오류 응답 본문에서 상세 메시지 파싱
+                                try {
+                                    JsonNode errorJson = objectMapper.readTree(errorBody);
+                                    JsonNode error = errorJson.path("error");
+                                    String errorMsg = error.path("message").asText("");
+                                    String reason = "";
+                                    if (error.path("details").isArray() && error.path("details").size() > 0) {
+                                        reason = error.path("details").get(0).path("reason").asText("");
+                                    }
+                                    
+                                    System.err.println("오류 메시지: " + errorMsg);
+                                    System.err.println("오류 이유: " + reason);
+                                    
+                                    if (errorMsg.contains("API key expired") || reason.equals("API_KEY_INVALID")) {
+                                        errorMessage = "Gemini API 키가 만료되었습니다. 새로운 API 키를 발급받아 설정해주세요.";
+                                        System.err.println("⚠️ API 키 만료됨 - 새로운 API 키 필요");
+                                    } else if (response.statusCode().value() == 403) {
+                                        errorMessage = "Gemini API 접근이 거부되었습니다. API 키가 유효하지 않거나 권한이 없습니다. API 키를 확인해주세요.";
+                                        System.err.println("403 오류: API 키가 유효하지 않거나 권한이 없습니다.");
+                                    } else if (response.statusCode().value() == 400) {
+                                        errorMessage = "Gemini API 요청 오류: " + (errorMsg.isEmpty() ? "요청 형식이 잘못되었습니다." : errorMsg);
+                                    } else if (response.statusCode().value() == 429) {
+                                        errorMessage = "Gemini API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.";
+                                    }
+                                } catch (Exception parseEx) {
+                                    // JSON 파싱 실패 시 기본 메시지 사용
+                                    System.err.println("오류 응답 파싱 실패: " + parseEx.getMessage());
+                                    if (response.statusCode().value() == 400) {
+                                        errorMessage = "Gemini API 요청 형식이 잘못되었습니다.";
+                                    } else if (response.statusCode().value() == 403) {
+                                        errorMessage = "Gemini API 접근이 거부되었습니다.";
+                                    } else if (response.statusCode().value() == 429) {
+                                        errorMessage = "Gemini API 사용량 한도를 초과했습니다.";
+                                    }
                                 }
+                                
+                                System.err.println("API 키 확인: " + (apiKey != null && apiKey.length() > 10 
+                                        ? apiKey.substring(0, 10) + "..." 
+                                        : "NULL 또는 빈 문자열"));
                                 
                                 return Mono.error(new RuntimeException(errorMessage + " (상태 코드: " + response.statusCode() + ")"));
                             });
@@ -156,14 +185,36 @@ public class GeminiService {
                 })
                 .onErrorResume(e -> {
                     // 에러 발생 시 기본 응답 반환
-                    System.err.println("Gemini API 호출 중 오류 발생: " + e.getMessage());
+                    System.err.println("=== Gemini API 호출 중 오류 발생 ===");
+                    System.err.println("오류 메시지: " + e.getMessage());
+                    System.err.println("오류 클래스: " + e.getClass().getName());
+                    if (e.getCause() != null) {
+                        System.err.println("원인: " + e.getCause().getMessage());
+                    }
                     e.printStackTrace();
                     
+                    // API 키 상태 확인
+                    if (apiKey == null || apiKey.isEmpty()) {
+                        System.err.println("⚠️ API 키가 설정되지 않았습니다!");
+                    } else {
+                        System.err.println("API 키 상태: " + apiKey.substring(0, Math.min(10, apiKey.length())) + "... (길이: " + apiKey.length() + ")");
+                    }
+                    
                     String errorMessage = "죄송합니다. 일시적인 오류가 발생했습니다.";
-                    if (e.getMessage() != null && e.getMessage().contains("403")) {
-                        errorMessage = "Gemini API 접근이 거부되었습니다. 관리자에게 문의해주세요.";
-                    } else if (e.getMessage() != null && e.getMessage().contains("429")) {
-                        errorMessage = "API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.";
+                    String errorDetail = e.getMessage();
+                    
+                    if (errorDetail != null) {
+                        if (errorDetail.contains("API key expired") || errorDetail.contains("API 키가 만료되었습니다")) {
+                            errorMessage = "Gemini API 키가 만료되었습니다. 관리자에게 문의해주세요.";
+                            System.err.println("⚠️ API 키 만료됨");
+                        } else if (errorDetail.contains("403") || errorDetail.contains("API_KEY_INVALID")) {
+                            errorMessage = "Gemini API 접근이 거부되었습니다. API 키가 유효하지 않습니다. 관리자에게 문의해주세요.";
+                            System.err.println("⚠️ API 키 유효하지 않음");
+                        } else if (errorDetail.contains("429")) {
+                            errorMessage = "API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.";
+                        } else if (errorDetail.contains("400")) {
+                            errorMessage = errorDetail; // 이미 상세한 메시지가 포함되어 있음
+                        }
                     }
                     
                     return Mono.just(ChatResponse.builder()

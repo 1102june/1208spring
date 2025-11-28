@@ -46,6 +46,7 @@ out/
 ### API Keys and Secrets ###
 # 로컬 개발용 설정 파일 (API 키 포함 가능)
 src/main/resources/application-local.yml
+src/main/resources/application.yml
 *.local.yml
 *.local.properties
 .env

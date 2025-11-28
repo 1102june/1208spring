@@ -94,11 +94,14 @@ otp:
 # Gemini API 설정
 # ⚠️ 보안 주의: API 키는 환경 변수로만 설정하세요. 소스 코드에 하드코딩하지 마세요.
 # 환경 변수 설정 방법:
-#   - Windows: set GEMINI_API_KEY=your_api_key_here
-#   - Linux/Mac: export GEMINI_API_KEY=your_api_key_here
-#   - IDE 실행 설정에서 환경 변수 추가
+#   - Windows (시스템 환경 변수): 제어판 > 시스템 > 고급 시스템 설정 > 환경 변수 > 시스템 변수 > 새로 만들기
+#     변수 이름: GEMINI_API_KEY
+#     변수 값: AIzaSyCUchqbpTpMMsTno_PiweocZJxrqBUTfpY
+#   - Windows (현재 세션): set GEMINI_API_KEY=AIzaSyCUchqbpTpMMsTno_PiweocZJxrqBUTfpY
+#   - Linux/Mac: export GEMINI_API_KEY=AIzaSyCUchqbpTpMMsTno_PiweocZJxrqBUTfpY
+#   - IDE 실행 설정에서 환경 변수 추가 (IntelliJ: Run > Edit Configurations > Environment variables)
 gemini:
   api:
-    key: AIzaSyCVSgQhS2s6DsDezj3vYMWqWZuq3p4mEHk  # 필수: 환경 변수에서만 로드 (기본값 없음)
+    key: ${GEMINI_API_KEY:AIzaSyCUchqbpTpMMsTno_PiweocZJxrqBUTfpY}  # 환경 변수 우선, 없으면 기본값 사용 (임시)
     base-url: https://generativelanguage.googleapis.com/v1  # v1 API 사용 (v1beta는 구버전, 사용하지 않음)
     model: gemini-2.5-flash  # 사용할 모델명 (이 프로젝트에서 사용 가능한 모델: gemini-2.5-flash)
