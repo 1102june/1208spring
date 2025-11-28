@@ -1,5 +1,6 @@
 package com.example.youth.DB;
 
+import com.example.youth.common.ContentType;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDate;
@@ -19,11 +20,9 @@ public class CalendarEvent {
     private String title;
 
     @Enumerated(EnumType.STRING)
-    private EventType eventType;
+    private ContentType eventType;
 
     private LocalDate endDate;
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 }
-
-enum EventType { policy, housing }
