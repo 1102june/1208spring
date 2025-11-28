@@ -22,5 +22,6 @@ public class AIRecommendation {
     private ContentType contentType;
 
     private String contentId;
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 }

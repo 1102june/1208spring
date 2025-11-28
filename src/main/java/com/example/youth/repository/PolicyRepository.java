@@ -33,5 +33,9 @@ public interface PolicyRepository extends JpaRepository<Policy, String> {
     // 잘못 생성된 ID를 가진 정책 조회 (POLICY_로 시작하는 ID)
     @Query("SELECT p FROM Policy p WHERE p.policyId LIKE 'POLICY_%'")
     List<Policy> findPoliciesWithInvalidId();
+    
+    // 활성 정책 중 카테고리별 조회
+    @Query("SELECT p FROM Policy p WHERE p.applicationStart <= :currentDate AND p.applicationEnd >= :currentDate AND p.category = :category")
+    List<Policy> findActivePoliciesByCategory(@Param("currentDate") Date currentDate, @Param("category") String category);
 }
 

@@ -25,7 +25,9 @@ public class Bookmark {
     private String contentId;
 
     @Enumerated(EnumType.STRING)
+    @Builder.Default
     private ActiveStatus isActive = ActiveStatus.Y;
 
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 }

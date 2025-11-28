@@ -4,6 +4,7 @@ import com.example.youth.DB.InterestCategory;
 import com.example.youth.DB.User;
 import com.example.youth.DB.UserProfile;
 import com.example.youth.dto.ProfileRequest;
+import com.example.youth.dto.UserProfileResponse;
 import com.example.youth.repository.InterestCategoryRepository;
 import com.example.youth.repository.UserProfileRepository;
 import com.example.youth.repository.UserRepository;
@@ -14,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -166,5 +168,37 @@ public class UserService {
      */
     public UserProfile getProfileByUserId(String userId) {
         return userProfileRepository.findByUser_UserId(userId).orElse(null);
+    }
+
+    /**
+     * 사용자 프로필을 UserProfileResponse로 조회
+     * 나이, 지역, 관심사를 포함
+     */
+    public UserProfileResponse getUserProfile(String userId) {
+        UserProfile profile = userProfileRepository.findByUser_UserId(userId)
+                .orElseThrow(() -> new RuntimeException("프로필을 찾을 수 없습니다."));
+
+        // 나이 계산 (생년월일로부터)
+        Integer age = null;
+        if (profile.getBirthYear() != null) {
+            LocalDate today = LocalDate.now();
+            age = today.getYear() - profile.getBirthYear().getYear();
+            // 생일이 아직 지나지 않았으면 1살 빼기
+            LocalDate birthdayThisYear = profile.getBirthYear().withYear(today.getYear());
+            if (today.isBefore(birthdayThisYear)) {
+                age--;
+            }
+        }
+
+        // 관심사 목록 조회
+        List<String> interests = interestCategoryRepository.findByUser_UserId(userId).stream()
+                .map(InterestCategory::getCategory)
+                .collect(Collectors.toList());
+
+        return UserProfileResponse.builder()
+                .age(age)
+                .region(profile.getRegion())
+                .interests(interests)
+                .build();
     }
 }

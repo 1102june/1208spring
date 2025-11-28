@@ -20,6 +20,7 @@ public class User {
 
     // 🔥 OTP 인증 여부 관리 (Firebase 이메일 인증 X)
     @Column(nullable = false)
+    @Builder.Default
     private boolean emailVerified = false;
 
     @Column(nullable = true, length = 255)
