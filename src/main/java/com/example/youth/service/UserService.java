@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -171,33 +172,33 @@ public class UserService {
     }
 
     /**
-     * 사용자 프로필을 UserProfileResponse로 조회
-     * 나이, 지역, 관심사를 포함
+     * 사용자 프로필을 UserProfileResponse로 변환
      */
     public UserProfileResponse getUserProfile(String userId) {
         UserProfile profile = userProfileRepository.findByUser_UserId(userId)
-                .orElseThrow(() -> new RuntimeException("프로필을 찾을 수 없습니다."));
+                .orElseThrow(() -> new RuntimeException("프로필을 찾을 수 없습니다: " + userId));
 
-        // 나이 계산 (생년월일로부터)
+        // 나이 계산 (생년월일 기준)
         Integer age = null;
         if (profile.getBirthYear() != null) {
+            LocalDate birthDate = profile.getBirthYear();
             LocalDate today = LocalDate.now();
-            age = today.getYear() - profile.getBirthYear().getYear();
-            // 생일이 아직 지나지 않았으면 1살 빼기
-            LocalDate birthdayThisYear = profile.getBirthYear().withYear(today.getYear());
-            if (today.isBefore(birthdayThisYear)) {
-                age--;
-            }
+            age = (int) ChronoUnit.YEARS.between(birthDate, today);
         }
 
         // 관심사 목록 조회
-        List<String> interests = interestCategoryRepository.findByUser_UserId(userId).stream()
+        List<String> interests = interestCategoryRepository.findByUser_UserId(userId)
+                .stream()
                 .map(InterestCategory::getCategory)
                 .collect(Collectors.toList());
 
         return UserProfileResponse.builder()
+                .userId(userId)
+                .nickname(profile.getNickname())
                 .age(age)
                 .region(profile.getRegion())
+                .education(profile.getEducation())
+                .jobStatus(profile.getJobStatus())
                 .interests(interests)
                 .build();
     }

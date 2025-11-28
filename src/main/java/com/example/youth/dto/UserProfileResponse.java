@@ -12,8 +12,12 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserProfileResponse {
+    private String userId;
+    private String nickname;
     private Integer age;
     private String region;
+    private String education;
+    private String jobStatus;
     private List<String> interests;
 }
 

@@ -5,6 +5,8 @@ import com.example.youth.DB.Housing;
 import com.example.youth.DB.HousingComplex;
 import com.example.youth.DB.HousingNotice;
 import com.example.youth.common.ContentType;
+import com.example.youth.dto.HousingComplexListResponse;
+import com.example.youth.dto.HousingNoticeListResponse;
 import com.example.youth.dto.HousingResponse;
 import com.example.youth.dto.UserProfileResponse;
 import com.example.youth.repository.BookmarkRepository;
@@ -12,11 +14,16 @@ import com.example.youth.repository.HousingComplexRepository;
 import com.example.youth.repository.HousingNoticeRepository;
 import com.example.youth.repository.HousingRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import java.sql.Date;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.Comparator;
 import java.util.stream.Collectors;
 
 /**

@@ -16,6 +16,10 @@ public interface PolicyRepository extends JpaRepository<Policy, String> {
     @Query("SELECT p FROM Policy p WHERE p.applicationStart <= :currentDate AND p.applicationEnd >= :currentDate")
     List<Policy> findActivePolicies(@Param("currentDate") Date currentDate);
     
+    // 신청 기간 내 + 카테고리별 정책 조회
+    @Query("SELECT p FROM Policy p WHERE p.applicationStart <= :currentDate AND p.applicationEnd >= :currentDate AND p.category = :category")
+    List<Policy> findActivePoliciesByCategory(@Param("currentDate") Date currentDate, @Param("category") String category);
+    
     // 나이 범위에 맞는 정책 조회
     @Query("SELECT p FROM Policy p WHERE p.ageStart <= :age AND p.ageEnd >= :age")
     List<Policy> findPoliciesByAge(@Param("age") Integer age);
