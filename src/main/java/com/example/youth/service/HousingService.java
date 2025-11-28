@@ -5,8 +5,6 @@ import com.example.youth.DB.Housing;
 import com.example.youth.DB.HousingComplex;
 import com.example.youth.DB.HousingNotice;
 import com.example.youth.common.ContentType;
-import com.example.youth.dto.HousingComplexListResponse;
-import com.example.youth.dto.HousingNoticeListResponse;
 import com.example.youth.dto.HousingResponse;
 import com.example.youth.dto.UserProfileResponse;
 import com.example.youth.repository.BookmarkRepository;
@@ -269,7 +267,7 @@ public class HousingService {
 
     // 활성 임대주택 목록 조회
     public List<HousingResponse> getActiveHousing(String userId) {
-        Date currentDate = new Date();
+        java.util.Date currentDate = new java.util.Date();
         List<HousingNotice> activeNotices = housingNoticeRepository.findActiveNotices(currentDate);
         List<HousingComplex> allComplexes = housingComplexRepository.findAll();
         
@@ -300,7 +298,7 @@ public class HousingService {
             Integer radius, 
             Integer limit) {
         
-        Date currentDate = new Date();
+        java.util.Date currentDate = new java.util.Date();
         List<HousingNotice> activeNotices = housingNoticeRepository.findActiveNotices(currentDate);
         List<HousingComplex> allComplexes = housingComplexRepository.findAll();
 

@@ -201,17 +201,6 @@ public class PolicyService {
     }
 
     /**
-     * 카테고리별 활성 정책 조회
-     */
-    public List<PolicyResponse> getActivePoliciesByCategory(String category, String userId) {
-        Date currentDate = new Date();
-        List<Policy> policies = policyRepository.findActivePoliciesByCategory(currentDate, category);
-        return policies.stream()
-                .map(policy -> convertToResponse(policy, userId))
-                .collect(Collectors.toList());
-    }
-
-    /**
      * 내부 사용용 점수 래퍼 클래스
      */
     private static class ScoredPolicy {
