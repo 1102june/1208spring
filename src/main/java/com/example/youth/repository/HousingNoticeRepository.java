@@ -12,19 +12,25 @@ import java.util.Optional;
 
 @Repository
 public interface HousingNoticeRepository extends JpaRepository<HousingNotice, String> {
-    
+
     // 단지 식별자로 조회
+    // Find notices by complex identifier
     List<HousingNotice> findByHsmpSn(String hsmpSn);
-    
+
     // 단지명으로 조회
+
+    // Find notices by complex name
     List<HousingNotice> findByHsmpNm(String hsmpNm);
-    
+
     // 신청 기간 내 공고 조회
+
+    // Fetch notices whose application window includes the provided date
     @Query("SELECT n FROM HousingNotice n WHERE n.applicationStart <= :currentDate AND n.applicationEnd >= :currentDate")
     List<HousingNotice> findActiveNotices(@Param("currentDate") Date currentDate);
-    
+
     // 단지 식별자 또는 단지명으로 조회 (매칭용)
+
+    // Lookup by either complex identifier or complex name (for matching)
     @Query("SELECT n FROM HousingNotice n WHERE n.hsmpSn = :identifier OR n.hsmpNm = :identifier")
     List<HousingNotice> findByIdentifier(@Param("identifier") String identifier);
 }
-

@@ -4,6 +4,7 @@ import com.example.youth.DB.InterestCategory;
 import com.example.youth.DB.User;
 import com.example.youth.DB.UserProfile;
 import com.example.youth.dto.ProfileRequest;
+import com.example.youth.dto.UserProfileResponse;
 import com.example.youth.repository.InterestCategoryRepository;
 import com.example.youth.repository.UserProfileRepository;
 import com.example.youth.repository.UserRepository;
@@ -13,7 +14,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -166,5 +169,37 @@ public class UserService {
      */
     public UserProfile getProfileByUserId(String userId) {
         return userProfileRepository.findByUser_UserId(userId).orElse(null);
+    }
+
+    /**
+     * 사용자 프로필을 UserProfileResponse로 변환
+     */
+    public UserProfileResponse getUserProfile(String userId) {
+        UserProfile profile = userProfileRepository.findByUser_UserId(userId)
+                .orElseThrow(() -> new RuntimeException("프로필을 찾을 수 없습니다: " + userId));
+
+        // 나이 계산 (생년월일 기준)
+        Integer age = null;
+        if (profile.getBirthYear() != null) {
+            LocalDate birthDate = profile.getBirthYear();
+            LocalDate today = LocalDate.now();
+            age = (int) ChronoUnit.YEARS.between(birthDate, today);
+        }
+
+        // 관심사 목록 조회
+        List<String> interests = interestCategoryRepository.findByUser_UserId(userId)
+                .stream()
+                .map(InterestCategory::getCategory)
+                .collect(Collectors.toList());
+
+        return UserProfileResponse.builder()
+                .userId(userId)
+                .nickname(profile.getNickname())
+                .age(age)
+                .region(profile.getRegion())
+                .education(profile.getEducation())
+                .jobStatus(profile.getJobStatus())
+                .interests(interests)
+                .build();
     }
 }
