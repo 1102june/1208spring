@@ -32,8 +32,8 @@ public class GeminiService {
     private final PolicyRepository policyRepository;
     private final HousingRepository housingRepository;
 
-    @Value("${gemini.api.key}")
-    private String apiKey;
+    @Value("${gemini.api.key:}")
+    private String apiKey;  // 환경 변수에서만 로드 (기본값 없음)
 
     @Value("${gemini.api.model:gemini-2.5-flash}")
     private String modelName;
@@ -58,6 +58,19 @@ public class GeminiService {
                 .baseUrl(baseUrl)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .build();
+        
+        // API 키 로드 확인 로그
+        System.out.println("Gemini API 초기화:");
+        System.out.println("  - Base URL: " + baseUrl);
+        System.out.println("  - Model: " + modelName);
+        if (apiKey == null || apiKey.isEmpty()) {
+            System.err.println("  ⚠️ WARNING: GEMINI_API_KEY 환경 변수가 설정되지 않았습니다!");
+            System.err.println("  환경 변수 설정 방법:");
+            System.err.println("    Windows: set GEMINI_API_KEY=your_api_key_here");
+            System.err.println("    Linux/Mac: export GEMINI_API_KEY=your_api_key_here");
+        } else {
+            System.out.println("  - API Key: " + apiKey.substring(0, Math.min(10, apiKey.length())) + "... (로드됨)");
+        }
     }
 
     /**
@@ -95,7 +108,16 @@ public class GeminiService {
 
         // 4. Gemini API 호출 (올바른 엔드포인트 형식)
         // 최종 URL: https://generativelanguage.googleapis.com/v1/models/{modelName}:generateContent?key={apiKey}
+        if (apiKey == null || apiKey.isEmpty()) {
+            System.err.println("Gemini API 키가 설정되지 않았습니다.");
+            return Mono.just(ChatResponse.builder()
+                    .response("Gemini API 키가 설정되지 않았습니다. 관리자에게 문의해주세요.")
+                    .actionLinks(new ArrayList<>())
+                    .build());
+        }
+        
         String url = String.format("/models/%s:generateContent?key=%s", modelName, apiKey);
+        System.out.println("Gemini API 호출 URL: " + baseUrl + url.replace("?key=" + apiKey, "?key=***"));
         
         return webClient.post()
                 .uri(url)
@@ -105,8 +127,26 @@ public class GeminiService {
                     response -> {
                         return response.bodyToMono(String.class)
                             .flatMap(errorBody -> {
-                                System.err.println("Gemini API Error: " + errorBody);
-                                return Mono.error(new RuntimeException("Gemini API Error: " + errorBody));
+                                System.err.println("=== Gemini API Error ===");
+                                System.err.println("Status: " + response.statusCode());
+                                System.err.println("URL: " + baseUrl + url.replace("?key=" + apiKey, "?key=***"));
+                                System.err.println("Model: " + modelName);
+                                System.err.println("Error Body: " + errorBody);
+                                
+                                String errorMessage = "Gemini API 오류가 발생했습니다.";
+                                if (response.statusCode().value() == 403) {
+                                    errorMessage = "Gemini API 접근이 거부되었습니다. API 키가 유효하지 않거나 권한이 없습니다. API 키를 확인해주세요.";
+                                    System.err.println("403 오류: API 키가 유효하지 않거나 권한이 없습니다.");
+                                    System.err.println("API 키 확인: " + (apiKey != null && apiKey.length() > 10 
+                                            ? apiKey.substring(0, 10) + "..." 
+                                            : "NULL 또는 빈 문자열"));
+                                } else if (response.statusCode().value() == 400) {
+                                    errorMessage = "Gemini API 요청 형식이 잘못되었습니다.";
+                                } else if (response.statusCode().value() == 429) {
+                                    errorMessage = "Gemini API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.";
+                                }
+                                
+                                return Mono.error(new RuntimeException(errorMessage + " (상태 코드: " + response.statusCode() + ")"));
                             });
                     })
                 .bodyToMono(String.class)
@@ -116,9 +156,18 @@ public class GeminiService {
                 })
                 .onErrorResume(e -> {
                     // 에러 발생 시 기본 응답 반환
+                    System.err.println("Gemini API 호출 중 오류 발생: " + e.getMessage());
                     e.printStackTrace();
+                    
+                    String errorMessage = "죄송합니다. 일시적인 오류가 발생했습니다.";
+                    if (e.getMessage() != null && e.getMessage().contains("403")) {
+                        errorMessage = "Gemini API 접근이 거부되었습니다. 관리자에게 문의해주세요.";
+                    } else if (e.getMessage() != null && e.getMessage().contains("429")) {
+                        errorMessage = "API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.";
+                    }
+                    
                     return Mono.just(ChatResponse.builder()
-                            .response("죄송합니다. 일시적인 오류가 발생했습니다: " + e.getMessage())
+                            .response(errorMessage)
                             .actionLinks(new ArrayList<>())
                             .build());
                 });

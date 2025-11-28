@@ -71,8 +71,12 @@ public class PolicyController {
             List<PolicyResponse> policies = policyService.getPersonalizedPolicies(userId, category, limit);
             return ResponseEntity.ok(ApiResponse.success(policies));
         } catch (Exception e) {
+            String errorMessage = e.getMessage();
+            if (errorMessage == null || errorMessage.isEmpty()) {
+                errorMessage = e.getClass().getSimpleName();
+            }
             return ResponseEntity.internalServerError()
-                    .body(ApiResponse.error("맞춤 정책 조회 중 오류 발생: " + e.getMessage()));
+                    .body(ApiResponse.error("맞춤 정책 조회 중 오류 발생: " + errorMessage));
         }
     }
 

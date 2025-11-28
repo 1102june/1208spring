@@ -51,9 +51,23 @@ public class MainService {
         // 2. AI 추천을 Response로 변환
         List<AIRecommendationResponse> aiRecommendedPolicies = recommendations.stream()
                 .map(rec -> convertToRecommendationResponse(rec, userId))
+                .filter(rec -> rec.getPolicy() != null || rec.getHousing() != null) // null인 항목 제거
                 .collect(Collectors.toList());
 
-        // 3. 읽지 않은 알림 개수 조회
+        // 3. AI 추천이 없거나 부족하면 기본 추천 정책 제공
+        if (aiRecommendedPolicies.isEmpty()) {
+            // 기본 추천: 맞춤 정책 추천 사용
+            List<PolicyResponse> defaultPolicies = policyService.getPersonalizedPolicies(userId, null, 10);
+            aiRecommendedPolicies = defaultPolicies.stream()
+                    .map(policy -> AIRecommendationResponse.builder()
+                            .contentType(ContentType.policy)
+                            .contentId(policy.getPolicyId())
+                            .policy(policy)
+                            .build())
+                    .collect(Collectors.toList());
+        }
+
+        // 4. 읽지 않은 알림 개수 조회
         long unreadCount = notificationRepository.findByUser_UserIdAndIsRead(userId, false).size();
 
         return MainPageResponse.builder()

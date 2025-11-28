@@ -104,11 +104,18 @@ public class PolicyService {
      */
     public List<PolicyResponse> getPersonalizedPolicies(String userId, String category, Integer limit) {
         // 1. 사용자 프로필 조회 (없으면 기존 활성 정책 반환)
-        UserProfileResponse profile;
+        UserProfileResponse profile = null;
         try {
             profile = userService.getUserProfile(userId);
         } catch (Exception e) {
             // 프로필이 없으면 기존 활성 정책 목록을 그대로 반환
+            return (category != null && !category.isEmpty())
+                    ? getActivePoliciesByCategory(category, userId)
+                    : getActivePolicies(userId);
+        }
+
+        // 프로필이 null이면 활성 정책 반환
+        if (profile == null) {
             return (category != null && !category.isEmpty())
                     ? getActivePoliciesByCategory(category, userId)
                     : getActivePolicies(userId);
@@ -126,6 +133,11 @@ public class PolicyService {
         } else {
             activePolicies = policyRepository.findActivePolicies(currentDate);
         }
+        
+        // activePolicies가 null이면 빈 리스트 반환
+        if (activePolicies == null) {
+            activePolicies = new java.util.ArrayList<>();
+        }
 
         // 3. 점수 계산 + 필터링
         LocalDate today = LocalDate.now();
@@ -133,9 +145,11 @@ public class PolicyService {
 
         return activePolicies.stream()
                 // 신청 기간이 현재 날짜 기준으로 남아있는 정책만 사용
+                // applicationEnd가 null이면 기간 제한 없는 정책으로 간주하여 포함
                 .filter(policy -> {
                     if (policy.getApplicationEnd() == null) {
-                        return false;
+                        // applicationEnd가 null이면 기간 제한 없는 정책으로 간주
+                        return true;
                     }
                     LocalDate endDate = policy.getApplicationEnd().toInstant()
                             .atZone(ZoneId.systemDefault())
@@ -143,7 +157,8 @@ public class PolicyService {
                     return !endDate.isBefore(today);
                 })
                 .map(policy -> {
-                    double score = 0.0;
+                    // 기본 점수: 모든 정책에 기본 점수 부여 (다양한 정책 노출)
+                    double score = 10.0;
 
                     // 3-1. 나이 조건: 범위가 명시되어 있으면, 벗어나는 정책은 점수만 낮게 반영
                     Integer ageStart = policy.getAgeStart();
@@ -151,17 +166,27 @@ public class PolicyService {
                     if (age != null && ageStart != null && ageEnd != null) {
                         if (age >= ageStart && age <= ageEnd) {
                             score += 30.0;
+                        } else {
+                            // 범위 밖인 경우 약간의 패널티 (완전히 제외하지 않음)
+                            score -= 5.0;
                         }
-                        // 범위 밖인 경우에는 제외하지 않고 0점 처리 (다른 요소로 추천 가능)
+                    } else if (age != null) {
+                        // ageStart/ageEnd가 null이면 "모든 연령 가능"으로 보고 보너스 점수
+                        score += 15.0;
                     }
-                    // ageStart/ageEnd가 null이면 "모든 연령 가능"으로 보고 패널티/보너스 없음
 
                     // 3-2. 지역 점수: 정책 지역이 사용자 지역을 포함하면 가산점
                     String policyRegion = policy.getRegion();
                     if (userRegion != null && policyRegion != null) {
                         if (policyRegion.contains(userRegion) || userRegion.contains(policyRegion)) {
                             score += 20.0;
+                        } else if (policyRegion.equals("전국") || policyRegion.equals("전체")) {
+                            // 전국 정책은 중간 점수
+                            score += 10.0;
                         }
+                    } else if (policyRegion != null && (policyRegion.equals("전국") || policyRegion.equals("전체"))) {
+                        // 지역 정보가 없지만 전국 정책인 경우
+                        score += 10.0;
                     }
 
                     // 3-3. 관심 카테고리 점수
@@ -183,6 +208,9 @@ public class PolicyService {
                             score += deadlineScore;
                         }
                     }
+
+                    // 최소 점수 보장 (음수 방지)
+                    score = Math.max(0.0, score);
 
                     return new ScoredPolicy(policy, score);
                 })

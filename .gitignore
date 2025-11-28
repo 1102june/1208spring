@@ -42,3 +42,15 @@ out/
 !package.json
 !package-lock.json
 !tsconfig.json
+
+### API Keys and Secrets ###
+# 로컬 개발용 설정 파일 (API 키 포함 가능)
+src/main/resources/application-local.yml
+*.local.yml
+*.local.properties
+.env
+.env.local
+.env.*.local
+
+### API Keys in config files ###
+# API 키가 포함된 설정 파일은 Git에 커밋하지 마세요

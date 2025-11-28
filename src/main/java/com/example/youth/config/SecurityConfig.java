@@ -20,7 +20,9 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/auth/**").permitAll() // 인증 관련 엔드포인트는 모두 허용
                 .requestMatchers("/api/main/**").permitAll() // 메인 페이지 (추후 인증 추가 시 authenticated()로 변경)
-                .requestMatchers("/api/user/**").permitAll() // 개발 단계에서는 허용 (추후 인증 추가 시 authenticated()로 변경)
+                .requestMatchers("/api/user/**").permitAll() // 사용자 정보 API (추후 인증 추가 시 authenticated()로 변경)
+                .requestMatchers("/api/profile/**").permitAll() // 프로필 API (추후 인증 추가 시 authenticated()로 변경)
+                .requestMatchers("/api/interests/**").permitAll() // 관심사 API (추후 인증 추가 시 authenticated()로 변경)
                 .requestMatchers("/api/housing/**").permitAll() // 임대주택 API (추후 인증 추가 시 authenticated()로 변경)
                 .requestMatchers("/api/policy/**").permitAll() // 청년정책 API (추후 인증 추가 시 authenticated()로 변경)
                 .requestMatchers("/api/chat/**").permitAll() // 챗봇 API (추후 인증 추가 시 authenticated()로 변경)

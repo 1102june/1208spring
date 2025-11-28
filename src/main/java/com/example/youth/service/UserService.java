@@ -9,6 +9,8 @@ import com.example.youth.repository.InterestCategoryRepository;
 import com.example.youth.repository.UserProfileRepository;
 import com.example.youth.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +27,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
     private final InterestCategoryRepository interestCategoryRepository;
+    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     /**
      * 회원가입 로직
@@ -104,37 +107,62 @@ public class UserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
-        // 2) 생년월일 파싱 (ProfileRequest는 String, UserProfile은 LocalDate)
-        LocalDate birthDate = LocalDate.parse(profileRequest.getBirthDate(), DateTimeFormatter.ISO_LOCAL_DATE);
-
-        // 3) UserProfile 저장/업데이트
-        UserProfile profile = userProfileRepository.findByUser_UserId(userId)
-                .orElse(UserProfile.builder().user(user).build());
-
-        profile.setBirthYear(birthDate);
-        profile.setNickname(profileRequest.getNickname());
-        profile.setGender(profileRequest.getGender());
-        // region은 VARCHAR(10)이므로 province만 저장 (예: "서울", "경기", "강원")
-        // city는 별도로 저장하지 않음 (스키마 제약)
-        String region = profileRequest.getProvince();
-        if (region != null && region.length() > 10) {
-            region = region.substring(0, 10); // 최대 10자로 제한
+        // 2) User 정보 업데이트 (appVersion, deviceId, pushToken)
+        if (profileRequest.getAppVersion() != null && !profileRequest.getAppVersion().isEmpty()) {
+            user.setAppVersion(profileRequest.getAppVersion());
         }
-        profile.setRegion(region);
-        profile.setEducation(profileRequest.getEducation());
-        profile.setJobStatus(profileRequest.getEmployment());
+        if (profileRequest.getDeviceId() != null && !profileRequest.getDeviceId().isEmpty()) {
+            user.setDeviceId(profileRequest.getDeviceId());
+        }
+        if (profileRequest.getPushToken() != null && !profileRequest.getPushToken().isEmpty()) {
+            user.setPushToken(profileRequest.getPushToken());
+        }
+        userRepository.save(user);
 
-        userProfileRepository.save(profile);
+        // 3) 생년월일 파싱 (ProfileRequest는 String, UserProfile은 LocalDate)
+        if (profileRequest.getBirthDate() != null && !profileRequest.getBirthDate().isEmpty()) {
+            LocalDate birthDate = LocalDate.parse(profileRequest.getBirthDate(), DateTimeFormatter.ISO_LOCAL_DATE);
 
-        // 4) 기존 관심사 삭제 후 새로 저장
+            // 4) UserProfile 저장/업데이트
+            UserProfile profile = userProfileRepository.findByUser_UserId(userId)
+                    .orElse(UserProfile.builder().user(user).build());
+
+            profile.setBirthYear(birthDate);
+            if (profileRequest.getNickname() != null) {
+                profile.setNickname(profileRequest.getNickname());
+            }
+            if (profileRequest.getGender() != null) {
+                profile.setGender(profileRequest.getGender());
+            }
+            // region은 VARCHAR(10)이므로 province만 저장 (예: "서울", "경기", "강원")
+            // city는 별도로 저장하지 않음 (스키마 제약)
+            String region = profileRequest.getProvince();
+            if (region != null && !region.isEmpty()) {
+                if (region.length() > 10) {
+                    region = region.substring(0, 10); // 최대 10자로 제한
+                }
+                profile.setRegion(region);
+            }
+            if (profileRequest.getEducation() != null) {
+                profile.setEducation(profileRequest.getEducation());
+            }
+            if (profileRequest.getEmployment() != null) {
+                profile.setJobStatus(profileRequest.getEmployment());
+            }
+
+            userProfileRepository.save(profile);
+        }
+
+        // 5) 기존 관심사 삭제 후 새로 저장
         List<InterestCategory> existingInterests = interestCategoryRepository.findByUser_UserId(userId);
         if (!existingInterests.isEmpty()) {
             interestCategoryRepository.deleteAll(existingInterests);
         }
 
-        // 5) 새로운 관심사 저장
-        if (profileRequest.getInterests() != null && !profileRequest.getInterests().isEmpty()) {
-            List<InterestCategory> newInterests = profileRequest.getInterests().stream()
+        // 6) 새로운 관심사 저장 (interests 또는 category 사용)
+        List<String> interestsList = profileRequest.getInterestsList();
+        if (!interestsList.isEmpty()) {
+            List<InterestCategory> newInterests = interestsList.stream()
                     .map(interest -> InterestCategory.builder()
                             .user(user)
                             .category(interest)
@@ -201,5 +229,15 @@ public class UserService {
                 .jobStatus(profile.getJobStatus())
                 .interests(interests)
                 .build();
+    }
+
+    /**
+     * 비밀번호 해시화 (BCrypt)
+     */
+    public String hashPassword(String password) {
+        if (password == null || password.isEmpty()) {
+            return "";
+        }
+        return passwordEncoder.encode(password);
     }
 }

@@ -34,32 +34,83 @@ public class UserController {
     }
 
     /**
-     * 프로필 조회
-     * GET /auth/profile
+     * 회원가입 (이메일/비밀번호)
+     * POST /auth/signup
+     * idToken과 password를 받아서 User 생성 (password는 BCrypt로 해시화)
      */
-    @GetMapping("/profile")
-    public ResponseEntity<ApiResponse<com.example.youth.DB.UserProfile>> getProfile(
-            @RequestHeader("Authorization") String idToken) {
+    @PostMapping("/signup")
+    public ResponseEntity<ApiResponse<String>> signup(@RequestBody com.example.youth.dto.SignupRequest signupRequest) {
         try {
-            // Firebase ID Token 검증
-            String token = idToken.replace("Bearer ", "");
-            FirebaseToken decodedToken = firebaseAuthService.verifyToken(token);
+            // 1) Firebase ID Token 검증
+            FirebaseToken decodedToken = firebaseAuthService.verifyToken(signupRequest.getIdToken());
             String uid = decodedToken.getUid();
             String email = decodedToken.getEmail();
 
-            // UID로 사용자 확인
+            // 2) 비밀번호 해시화 (BCrypt)
+            String passwordHash = "";
+            if (signupRequest.getPassword() != null && !signupRequest.getPassword().isEmpty()) {
+                passwordHash = userService.hashPassword(signupRequest.getPassword());
+            }
+
+            // 3) 사용자 확인 및 생성
             User user = userService.getUserByUid(uid);
             
-            // UID로 찾을 수 없으면 이메일로 확인
-            if (user == null && email != null) {
-                user = userService.getUserByEmail(email);
-                // 이메일로 찾은 사용자가 있으면 UID 업데이트
-                if (user != null) {
-                    user.setUserId(uid);
+            if (user == null) {
+                // 새로운 사용자 생성
+                User newUser = User.builder()
+                        .userId(uid)
+                        .email(email != null ? email : "")
+                        .emailVerified(false) // 이메일 인증은 OTP로 처리
+                        .passwordHash(passwordHash)
+                        .loginType(LoginType.local) // 이메일/비밀번호 로그인은 local 사용
+                        .osType(OSType.android)
+                        .createdAt(java.time.LocalDateTime.now())
+                        .build();
+                userService.registerUser(newUser);
+            } else {
+                // 기존 사용자가 있으면 passwordHash 업데이트
+                if (!passwordHash.isEmpty()) {
+                    user.setPasswordHash(passwordHash);
                     userService.updateUser(user);
                 }
             }
 
+            return ResponseEntity.ok(ApiResponse.success("회원가입이 완료되었습니다.", null));
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(ApiResponse.error("회원가입 중 오류가 발생했습니다: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 프로필 조회
+     * GET /auth/profile
+     * GET /api/profile (안드로이드 호환)
+     */
+    @GetMapping("/profile")
+    public ResponseEntity<ApiResponse<com.example.youth.DB.UserProfile>> getProfile(
+            @RequestHeader(value = "Authorization", required = false) String idToken,
+            @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        try {
+            String uid = null;
+            
+            // X-User-Id 헤더가 있으면 직접 사용
+            if (userId != null && !userId.isEmpty()) {
+                uid = userId;
+            } 
+            // Authorization 헤더가 있으면 Firebase Token 검증
+            else if (idToken != null && !idToken.isEmpty()) {
+                String token = idToken.replace("Bearer ", "");
+                FirebaseToken decodedToken = firebaseAuthService.verifyToken(token);
+                uid = decodedToken.getUid();
+            } else {
+                return ResponseEntity.status(400)
+                        .body(ApiResponse.error("Authorization 헤더 또는 X-User-Id 헤더가 필요합니다."));
+            }
+
+            // UID로 사용자 확인
+            User user = userService.getUserByUid(uid);
+            
             if (user == null) {
                 return ResponseEntity.status(404)
                         .body(ApiResponse.error("사용자를 찾을 수 없습니다."));
