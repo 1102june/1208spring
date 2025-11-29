@@ -34,7 +34,7 @@ public class ProfileController {
                         .body(ApiResponse.error("X-User-Id 헤더가 필요합니다."));
             }
 
-            // 프로필 조회 (DTO로 변환)
+            // 프로필 조회 (DTO로 변환) - 프로필이 없으면 null 반환
             UserProfileResponse profile = userService.getUserProfile(userId);
             
             if (profile == null) {
@@ -44,6 +44,8 @@ public class ProfileController {
 
             return ResponseEntity.ok(ApiResponse.success("프로필 조회 성공", profile));
         } catch (Exception e) {
+            System.err.println("ProfileController: 프로필 조회 중 오류: " + e.getMessage());
+            e.printStackTrace();
             return ResponseEntity.status(500)
                     .body(ApiResponse.error("서버 오류가 발생했습니다: " + e.getMessage()));
         }

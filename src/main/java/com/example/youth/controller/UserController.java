@@ -152,13 +152,21 @@ public class UserController {
                 User existingUserByEmail = userService.getUserByEmail(email);
                 
                 if (existingUserByEmail != null) {
-                    // 기존 사용자가 있으면 UID를 업데이트 (같은 이메일 = 같은 사용자)
-                    existingUserByEmail.setUserId(uid);
-                    existingUserByEmail.setEmailVerified(true);
-                    existingUserByEmail.setLoginType(LoginType.google);
-                    existingUserByEmail.setOsType(OSType.android);
-                    userService.updateUser(existingUserByEmail);
+                    // 기존 사용자가 있으면 userId를 변경하지 않고 그대로 사용
+                    // (Hibernate는 엔티티의 ID 변경을 허용하지 않음)
+                    // 기존 User의 userId를 사용하여 프로필 저장
                     user = existingUserByEmail;
+                    // 기타 정보만 업데이트 (userId는 변경하지 않음)
+                    if (!user.isEmailVerified()) {
+                        user.setEmailVerified(true);
+                    }
+                    if (user.getLoginType() != LoginType.google) {
+                        user.setLoginType(LoginType.google);
+                    }
+                    if (user.getOsType() != OSType.android) {
+                        user.setOsType(OSType.android);
+                    }
+                    userService.updateUser(user);
                 } else {
                     // 완전히 새로운 사용자면 생성
                     User newUser = User.builder()

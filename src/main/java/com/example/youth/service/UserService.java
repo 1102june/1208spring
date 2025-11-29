@@ -201,10 +201,15 @@ public class UserService {
 
     /**
      * 사용자 프로필을 UserProfileResponse로 변환
+     * 프로필이 없으면 null 반환 (예외 던지지 않음)
      */
     public UserProfileResponse getUserProfile(String userId) {
-        UserProfile profile = userProfileRepository.findByUser_UserId(userId)
-                .orElseThrow(() -> new RuntimeException("프로필을 찾을 수 없습니다: " + userId));
+        UserProfile profile = userProfileRepository.findByUser_UserId(userId).orElse(null);
+        
+        // 프로필이 없으면 null 반환
+        if (profile == null) {
+            return null;
+        }
 
         // 나이 계산 (생년월일 기준)
         Integer age = null;
