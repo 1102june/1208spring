@@ -14,5 +14,15 @@ public class CalendarEventRequest {
     private String title;
     private String eventType; // "policy" or "housing"
     private String endDate; // "yyyy-MM-dd"
-}
 
+    // 알림 설정
+    private Boolean isSevenDaysAlert;
+    private String sevenDaysAlertTime;
+
+    private Boolean isOneDayAlert;
+    private String oneDayAlertTime;
+
+    private Boolean isCustomAlert;
+    private Integer customAlertDays;
+    private String customAlertTime;
+}

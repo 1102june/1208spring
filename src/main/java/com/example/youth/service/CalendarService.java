@@ -37,6 +37,14 @@ public class CalendarService {
                 .title(request.getTitle())
                 .eventType(eventType)
                 .endDate(endDate)
+                // 알림 설정 저장 (null 체크 및 기본값 처리)
+                .isSevenDaysAlert(Boolean.TRUE.equals(request.getIsSevenDaysAlert()))
+                .sevenDaysAlertTime(request.getSevenDaysAlertTime())
+                .isOneDayAlert(Boolean.TRUE.equals(request.getIsOneDayAlert()))
+                .oneDayAlertTime(request.getOneDayAlertTime())
+                .isCustomAlert(Boolean.TRUE.equals(request.getIsCustomAlert()))
+                .customAlertDays(request.getCustomAlertDays())
+                .customAlertTime(request.getCustomAlertTime())
                 .build();
 
         CalendarEvent saved = calendarEventRepository.save(event);

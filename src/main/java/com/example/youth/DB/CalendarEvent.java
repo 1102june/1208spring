@@ -23,6 +23,18 @@ public class CalendarEvent {
     private ContentType eventType;
 
     private LocalDate endDate;
+    
+    // 알림 설정
+    private boolean isSevenDaysAlert;
+    private String sevenDaysAlertTime; // HH:mm
+
+    private boolean isOneDayAlert;
+    private String oneDayAlertTime; // HH:mm
+
+    private boolean isCustomAlert;
+    private Integer customAlertDays; // D-N
+    private String customAlertTime; // HH:mm
+
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 }
