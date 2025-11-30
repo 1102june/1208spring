@@ -52,5 +52,16 @@ public class BookmarkController {
             return ResponseEntity.status(500).body(ApiResponse.error(e.getMessage()));
         }
     }
+
+    // 관리자용: 모든 북마크 삭제
+    @DeleteMapping("/admin/all")
+    public ResponseEntity<ApiResponse<String>> deleteAllBookmarks() {
+        try {
+            bookmarkService.deleteAllBookmarks();
+            return ResponseEntity.ok(ApiResponse.success("모든 북마크가 삭제되었습니다.", null));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(ApiResponse.error(e.getMessage()));
+        }
+    }
 }
 

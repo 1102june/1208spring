@@ -123,9 +123,12 @@ public class UserService {
         if (profileRequest.getBirthDate() != null && !profileRequest.getBirthDate().isEmpty()) {
             LocalDate birthDate = LocalDate.parse(profileRequest.getBirthDate(), DateTimeFormatter.ISO_LOCAL_DATE);
 
-            // 4) UserProfile 저장/업데이트
-            UserProfile profile = userProfileRepository.findByUser_UserId(userId)
-                    .orElse(UserProfile.builder().user(user).build());
+            // 4) UserProfile 저장/업데이트 (중복 시 가장 최신 것 사용)
+            // 중복 방지를 위해 List로 받아서 첫 번째만 사용
+            List<UserProfile> profiles = userProfileRepository.findAllByUser_UserId(userId);
+            UserProfile profile = profiles.isEmpty() 
+                    ? UserProfile.builder().user(user).build()
+                    : profiles.get(0); // 가장 최신 것 (ORDER BY profile_id DESC)
 
             profile.setBirthYear(birthDate);
             if (profileRequest.getNickname() != null) {
@@ -196,7 +199,9 @@ public class UserService {
      * 사용자 ID로 프로필 조회
      */
     public UserProfile getProfileByUserId(String userId) {
-        return userProfileRepository.findByUser_UserId(userId).orElse(null);
+        // 중복 방지를 위해 List로 받아서 첫 번째만 사용
+        List<UserProfile> profiles = userProfileRepository.findAllByUser_UserId(userId);
+        return profiles.isEmpty() ? null : profiles.get(0);
     }
 
     /**
@@ -204,36 +209,44 @@ public class UserService {
      * 프로필이 없으면 null 반환 (예외 던지지 않음)
      */
     public UserProfileResponse getUserProfile(String userId) {
-        UserProfile profile = userProfileRepository.findByUser_UserId(userId).orElse(null);
-        
-        // 프로필이 없으면 null 반환
-        if (profile == null) {
+        try {
+            // 중복 방지를 위해 List로 받아서 첫 번째만 사용
+            List<UserProfile> profiles = userProfileRepository.findAllByUser_UserId(userId);
+            if (profiles.isEmpty()) {
+                return null;
+            }
+            
+            UserProfile profile = profiles.get(0); // 가장 최신 것 (ORDER BY profile_id DESC)
+
+            // 나이 계산 (생년월일 기준)
+            Integer age = null;
+            if (profile.getBirthYear() != null) {
+                LocalDate birthDate = profile.getBirthYear();
+                LocalDate today = LocalDate.now();
+                age = (int) ChronoUnit.YEARS.between(birthDate, today);
+            }
+
+            // 관심사 목록 조회
+            List<String> interests = interestCategoryRepository.findByUser_UserId(userId)
+                    .stream()
+                    .map(InterestCategory::getCategory)
+                    .collect(Collectors.toList());
+
+            return UserProfileResponse.builder()
+                    .userId(userId)
+                    .nickname(profile.getNickname())
+                    .age(age)
+                    .region(profile.getRegion())
+                    .education(profile.getEducation())
+                    .jobStatus(profile.getJobStatus())
+                    .interests(interests)
+                    .build();
+        } catch (Exception e) {
+            // 프로필 조회 실패 시 null 반환 (예외를 던지지 않음)
+            System.err.println("프로필 조회 중 오류 발생: " + e.getMessage());
+            e.printStackTrace();
             return null;
         }
-
-        // 나이 계산 (생년월일 기준)
-        Integer age = null;
-        if (profile.getBirthYear() != null) {
-            LocalDate birthDate = profile.getBirthYear();
-            LocalDate today = LocalDate.now();
-            age = (int) ChronoUnit.YEARS.between(birthDate, today);
-        }
-
-        // 관심사 목록 조회
-        List<String> interests = interestCategoryRepository.findByUser_UserId(userId)
-                .stream()
-                .map(InterestCategory::getCategory)
-                .collect(Collectors.toList());
-
-        return UserProfileResponse.builder()
-                .userId(userId)
-                .nickname(profile.getNickname())
-                .age(age)
-                .region(profile.getRegion())
-                .education(profile.getEducation())
-                .jobStatus(profile.getJobStatus())
-                .interests(interests)
-                .build();
     }
 
     /**

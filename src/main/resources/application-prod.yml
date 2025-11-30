@@ -1,0 +1,77 @@
+spring:
+  datasource:
+    driver-class-name: org.mariadb.jdbc.Driver
+    url: jdbc:mariadb://localhost:3306/wise_young?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Seoul
+    username: ${DB_USERNAME:wiseyoung}
+    password: ${DB_PASSWORD}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate  # ⚠️ 배포 환경에서는 validate 사용 (스키마 자동 생성 비활성화)
+    show-sql: false  # 프로덕션에서는 SQL 로그 비활성화
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.MariaDBDialect
+
+  mail:
+    host: ${EMAIL_HOST:smtp.gmail.com}
+    port: ${EMAIL_PORT:587}
+    username: ${EMAIL_USERNAME}
+    password: ${EMAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+server:
+  port: 8080
+  error:
+    include-message: always
+    include-binding-errors: always
+
+# 공공데이터 API 설정
+public-data:
+  lh:
+    rental-house-list:
+      url: https://data.myhome.go.kr:443/rentalHouseList
+      service-key: ${LH_SERVICE_KEY:}
+      encoding-key: ${LH_ENCODING_KEY:}
+      decoding-key: ${LH_DECODING_KEY:}
+    rental-notice:
+      url: ${LH_RENTAL_NOTICE_URL:https://apis.data.go.kr/B552555}
+      service-key: ${LH_RENTAL_NOTICE_SERVICE_KEY:}
+      encoding-key: ${LH_RENTAL_NOTICE_ENCODING_KEY:}
+      decoding-key: ${LH_RENTAL_NOTICE_DECODING_KEY:}
+
+youth-policy:
+  url: ${YOUTH_POLICY_API_URL:https://www.youthcenter.go.kr/go/ythip/getPlcy}
+  service-key: ${YOUTH_POLICY_SERVICE_KEY:}
+
+kakao:
+  map:
+    rest-api-key: ${KAKAO_REST_API_KEY:}
+    base-url: https://dapi.kakao.com
+
+otp:
+  expiry-minutes: 5
+  length: 6
+
+gemini:
+  api:
+    key: ${GEMINI_API_KEY:}
+    base-url: https://generativelanguage.googleapis.com/v1
+    model: gemini-2.5-flash
+
+logging:
+  level:
+    root: INFO
+    com.example.youth: INFO
+    org.springframework: WARN
+    org.hibernate: WARN
+

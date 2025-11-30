@@ -24,6 +24,11 @@ public class CalendarEvent {
 
     private LocalDate endDate;
     
+    // 활성 상태 (Y: 활성, N: 비활성)
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    private ActiveStatus isActive = ActiveStatus.Y;
+    
     // 알림 설정
     private boolean isSevenDaysAlert;
     private String sevenDaysAlertTime; // HH:mm

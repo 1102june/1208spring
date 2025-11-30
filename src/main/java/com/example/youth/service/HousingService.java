@@ -252,7 +252,7 @@ public class HousingService {
 
     // ID로 임대주택 조회
     public HousingResponse getHousingById(String housingId, String userId) {
-        // 먼저 단지정보에서 조회
+        // 먼저 단지정보에서 조회 (complexId로)
         Optional<HousingComplex> complexOpt = housingComplexRepository.findById(housingId);
         HousingComplex complex = complexOpt.orElse(null);
         
@@ -260,7 +260,17 @@ public class HousingService {
         List<HousingNotice> notices = housingNoticeRepository.findByIdentifier(housingId);
         HousingNotice notice = notices.isEmpty() ? null : notices.get(0);
         
+        // 단지명으로도 조회 시도
+        if (complex == null) {
+            complexOpt = housingComplexRepository.findByHsmpNm(housingId);
+            complex = complexOpt.orElse(null);
+        }
+        
         if (complex == null && notice == null) {
+            System.err.println("HousingService: 임대주택 조회 실패 - housingId=" + housingId + ", userId=" + userId);
+            System.err.println("  - complexId로 조회: 실패");
+            System.err.println("  - hsmpSn/hsmpNm으로 조회: 실패");
+            System.err.println("  - 단지명으로 조회: 실패");
             throw new RuntimeException("임대주택을 찾을 수 없습니다: " + housingId);
         }
         
@@ -313,8 +323,12 @@ public class HousingService {
         String profileRegion = null;
         try {
             UserProfileResponse profile = userService.getUserProfile(userId);
-            profileRegion = profile.getRegion();
-        } catch (Exception ignored) {
+            if (profile != null) {
+                profileRegion = profile.getRegion();
+            }
+        } catch (Exception e) {
+            // 프로필 조회 실패 시 지역 필터 없이 진행
+            System.err.println("프로필 조회 중 오류 (지역 필터 없이 진행): " + e.getMessage());
         }
         final String userRegion = profileRegion;
 

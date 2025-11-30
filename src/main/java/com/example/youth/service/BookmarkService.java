@@ -58,9 +58,13 @@ public class BookmarkService {
         Bookmark bookmark = bookmarkRepository.findById(bookmarkId)
                 .orElseThrow(() -> new IllegalArgumentException("북마크를 찾을 수 없습니다: " + bookmarkId));
         
-        // 실제 삭제 대신 비활성화 처리 (ActiveStatus.N)
-        bookmark.setIsActive(ActiveStatus.N);
-        bookmarkRepository.save(bookmark);
+        // 실제 삭제 (데이터베이스에서 완전히 제거)
+        bookmarkRepository.delete(bookmark);
+    }
+
+    @Transactional
+    public void deleteAllBookmarks() {
+        bookmarkRepository.deleteAll();
     }
 
     @Transactional(readOnly = true)

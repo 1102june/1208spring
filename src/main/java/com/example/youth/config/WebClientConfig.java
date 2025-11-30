@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
+import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.netty.http.client.HttpClient;
 
@@ -47,37 +48,65 @@ public class WebClientConfig {
 
     /**
      * LH 임대주택 단지정보 조회용 WebClient
+     * 큰 응답 데이터를 처리하기 위해 버퍼 크기를 5MB로 설정
      */
     @Bean(name = "lhWebClient")
     public WebClient lhWebClient() {
         HttpClient httpClient = createInsecureHttpClient();
+        
+        ExchangeStrategies strategies = ExchangeStrategies.builder()
+                .codecs(configurer -> configurer
+                        .defaultCodecs()
+                        .maxInMemorySize(5 * 1024 * 1024)) // 5MB
+                .build();
+        
         return WebClient.builder()
                 .baseUrl(lhRentalHouseListUrl)
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .exchangeStrategies(strategies)
                 .build();
     }
 
     /**
      * LH 분양임대공고문 조회용 WebClient
+     * 큰 응답 데이터를 처리하기 위해 버퍼 크기를 5MB로 설정
      */
     @Bean(name = "lhRentalNoticeWebClient")
     public WebClient lhRentalNoticeWebClient() {
         HttpClient httpClient = createInsecureHttpClient();
+        
+        ExchangeStrategies strategies = ExchangeStrategies.builder()
+                .codecs(configurer -> configurer
+                        .defaultCodecs()
+                        .maxInMemorySize(5 * 1024 * 1024)) // 5MB
+                .build();
+        
         return WebClient.builder()
                 .baseUrl(lhRentalNoticeUrl)
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .exchangeStrategies(strategies)
                 .build();
     }
 
     /**
      * 청년정책 조회용 WebClient
+     * 큰 응답 데이터를 처리하기 위해 버퍼 크기를 10MB로 설정
      */
     @Bean(name = "youthPolicyWebClient")
     public WebClient youthPolicyWebClient() {
         HttpClient httpClient = createInsecureHttpClient();
+        
+        // 큰 응답 데이터를 처리하기 위한 ExchangeStrategies 설정
+        ExchangeStrategies strategies = ExchangeStrategies.builder()
+                .codecs(configurer -> configurer
+                        .defaultCodecs()
+                        .maxInMemorySize(10 * 1024 * 1024)) // 10MB
+                .build();
+        
         return WebClient.builder()
                 .baseUrl(youthPolicyUrl)
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .exchangeStrategies(strategies)
                 .build();
     }
 }

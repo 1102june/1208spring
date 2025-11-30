@@ -41,5 +41,28 @@ public class CalendarController {
             return ResponseEntity.status(500).body(ApiResponse.error(e.getMessage()));
         }
     }
+
+    @DeleteMapping("/{eventId}")
+    public ResponseEntity<ApiResponse<Void>> deleteEvent(
+            @RequestHeader("X-User-Id") String userId,
+            @PathVariable Long eventId) {
+        try {
+            calendarService.deleteEvent(userId, eventId);
+            return ResponseEntity.ok(ApiResponse.success("일정이 삭제되었습니다.", null));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    // 관리자용: 모든 캘린더 이벤트 삭제
+    @DeleteMapping("/admin/all")
+    public ResponseEntity<ApiResponse<String>> deleteAllEvents() {
+        try {
+            calendarService.deleteAllEvents();
+            return ResponseEntity.ok(ApiResponse.success("모든 캘린더 이벤트가 삭제되었습니다.", null));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(ApiResponse.error(e.getMessage()));
+        }
+    }
 }
 
