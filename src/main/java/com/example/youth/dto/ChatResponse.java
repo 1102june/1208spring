@@ -24,6 +24,8 @@ public class ChatResponse {
         private String type;  // "policy" 또는 "housing"
         private String id;    // 정책 ID 또는 주택 ID
         private String title; // 링크 제목
+        private String summary; // 간단 요약
+        private String url;   // 신청 링크 URL (link1 또는 link2)
     }
 }
 

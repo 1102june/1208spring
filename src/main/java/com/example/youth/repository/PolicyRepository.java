@@ -30,6 +30,9 @@ public interface PolicyRepository extends JpaRepository<Policy, String> {
     // 카테고리별 정책 조회
     List<Policy> findByCategory(String category);
     
+    // 카테고리 포함 검색 (부분 일치)
+    List<Policy> findByCategoryContaining(String category);
+    
     // 제목이 null이거나 빈 문자열인 정책 조회
     @Query("SELECT p FROM Policy p WHERE p.title IS NULL OR p.title = ''")
     List<Policy> findPoliciesWithNullOrEmptyTitle();

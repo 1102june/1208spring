@@ -32,5 +32,8 @@ public interface HousingRepository extends JpaRepository<Housing, String> {
     
     @Query("SELECT COUNT(h) FROM Housing h WHERE h.applicationEnd IS NOT NULL")
     long countWithApplicationEnd();
+    
+    // 이름 또는 주소로 검색
+    List<Housing> findByNameContainingOrAddressContaining(String name, String address);
 }
 

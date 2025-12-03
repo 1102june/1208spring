@@ -46,9 +46,9 @@ public class MainService {
         List<AIRecommendationResponse> aiRecommendedPolicies = new java.util.ArrayList<>();
         
         try {
-            // 맞춤 정책 추천 사용 (마감일이 남아있는 정책만)
+            // 맞춤 정책 추천 사용 (마감일이 남아있는 정책만, Top 5만)
             System.out.println("MainService: 맞춤 정책 추천 조회 시작, userId = " + userId);
-            List<PolicyResponse> recommendedPolicies = policyService.getPersonalizedPolicies(userId, null, 10);
+            List<PolicyResponse> recommendedPolicies = policyService.getPersonalizedPolicies(userId, null, 5);
             System.out.println("MainService: 맞춤 정책 추천 조회 완료, 개수 = " + (recommendedPolicies != null ? recommendedPolicies.size() : 0));
             
             if (recommendedPolicies != null && !recommendedPolicies.isEmpty()) {
