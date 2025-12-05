@@ -3,9 +3,10 @@
 
 Write-Host "환경 변수 설정 중..." -ForegroundColor Yellow
 
+# ⚠️ 보안 주의: 실제 암호화 키는 관리자에게 문의하거나 run-local.ps1 스크립트를 사용하세요.
 # 작은따옴표 사용 (특수문자 처리)
-$env:ENCRYPTION_KEY = 'qm9MfSTvjn8IvepsCn0cAqKXLxm+Nf6da40n0kMN2e4='
-$env:GEMINI_API_KEY = 'iFfWIWG6SuICN30uyNLwZsh26/+DD9k7/tbBtCNSDycIve0IyNB2DrXSZTLWCC4B'
+$env:ENCRYPTION_KEY = '암호화_키_여기에_입력'
+$env:GEMINI_API_KEY = '암호화된_API_키_여기에_입력'
 
 Write-Host "✓ 환경 변수 설정 완료" -ForegroundColor Green
 Write-Host ""

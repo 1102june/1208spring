@@ -119,42 +119,53 @@ public class UserService {
         }
         userRepository.save(user);
 
-        // 3) 생년월일 파싱 (ProfileRequest는 String, UserProfile은 LocalDate)
+        // 3) UserProfile 저장/업데이트 (중복 시 가장 최신 것 사용)
+        // 중복 방지를 위해 List로 받아서 첫 번째만 사용
+        List<UserProfile> profiles = userProfileRepository.findAllByUser_UserId(userId);
+        UserProfile profile = profiles.isEmpty() 
+                ? UserProfile.builder().user(user).build()
+                : profiles.get(0); // 가장 최신 것 (ORDER BY profile_id DESC)
+
+        // 4) 생년월일 파싱 및 설정 (ProfileRequest는 String, UserProfile은 LocalDate)
         if (profileRequest.getBirthDate() != null && !profileRequest.getBirthDate().isEmpty()) {
-            LocalDate birthDate = LocalDate.parse(profileRequest.getBirthDate(), DateTimeFormatter.ISO_LOCAL_DATE);
-
-            // 4) UserProfile 저장/업데이트 (중복 시 가장 최신 것 사용)
-            // 중복 방지를 위해 List로 받아서 첫 번째만 사용
-            List<UserProfile> profiles = userProfileRepository.findAllByUser_UserId(userId);
-            UserProfile profile = profiles.isEmpty() 
-                    ? UserProfile.builder().user(user).build()
-                    : profiles.get(0); // 가장 최신 것 (ORDER BY profile_id DESC)
-
-            profile.setBirthYear(birthDate);
-            if (profileRequest.getNickname() != null) {
-                profile.setNickname(profileRequest.getNickname());
+            try {
+                LocalDate birthDate = LocalDate.parse(profileRequest.getBirthDate(), DateTimeFormatter.ISO_LOCAL_DATE);
+                profile.setBirthYear(birthDate);
+            } catch (Exception e) {
+                System.err.println("생년월일 파싱 실패: " + e.getMessage());
             }
-            if (profileRequest.getGender() != null) {
-                profile.setGender(profileRequest.getGender());
-            }
-            // region은 VARCHAR(10)이므로 province만 저장 (예: "서울", "경기", "강원")
-            // city는 별도로 저장하지 않음 (스키마 제약)
-            String region = profileRequest.getProvince();
-            if (region != null && !region.isEmpty()) {
-                if (region.length() > 10) {
-                    region = region.substring(0, 10); // 최대 10자로 제한
-                }
-                profile.setRegion(region);
-            }
-            if (profileRequest.getEducation() != null) {
-                profile.setEducation(profileRequest.getEducation());
-            }
-            if (profileRequest.getEmployment() != null) {
-                profile.setJobStatus(profileRequest.getEmployment());
-            }
-
-            userProfileRepository.save(profile);
         }
+        
+        // 5) 닉네임, 지역, 직업, 교육 정보 업데이트 (birthDate와 무관하게 항상 업데이트)
+        if (profileRequest.getNickname() != null) {
+            profile.setNickname(profileRequest.getNickname());
+        }
+        if (profileRequest.getGender() != null) {
+            profile.setGender(profileRequest.getGender());
+        }
+        // region은 province와 city를 합쳐서 저장 (최대 50자까지 허용)
+        // "경기도 수원시" 형식으로 저장
+        String region = null;
+        if (profileRequest.getProvince() != null && !profileRequest.getProvince().isEmpty()) {
+            if (profileRequest.getCity() != null && !profileRequest.getCity().isEmpty()) {
+                region = profileRequest.getProvince() + " " + profileRequest.getCity();
+            } else {
+                region = profileRequest.getProvince();
+            }
+            // VARCHAR(50) 제한 확인 (스키마에 따라 조정 필요)
+            if (region.length() > 50) {
+                region = region.substring(0, 50); // 최대 50자로 제한
+            }
+            profile.setRegion(region);
+        }
+        if (profileRequest.getEducation() != null) {
+            profile.setEducation(profileRequest.getEducation());
+        }
+        if (profileRequest.getEmployment() != null) {
+            profile.setJobStatus(profileRequest.getEmployment());
+        }
+
+        userProfileRepository.save(profile);
 
         // 5) 기존 관심사 삭제 후 새로 저장
         List<InterestCategory> existingInterests = interestCategoryRepository.findByUser_UserId(userId);

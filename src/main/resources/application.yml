@@ -93,15 +93,22 @@ otp:
 
 # Gemini API 설정
 # ⚠️ 보안 주의: API 키는 환경 변수로만 설정하세요. 소스 코드에 하드코딩하지 마세요.
+# API 키는 암호화되어 환경 변수 GEMINI_API_KEY로 전달되어야 합니다.
 # 환경 변수 설정 방법:
-#   - Windows (시스템 환경 변수): 제어판 > 시스템 > 고급 시스템 설정 > 환경 변수 > 시스템 변수 > 새로 만들기
-#     변수 이름: GEMINI_API_KEY
-#     변수 값: AIzaSyCUchqbpTpMMsTno_PiweocZJxrqBUTfpY
-#   - Windows (현재 세션): set GEMINI_API_KEY=AIzaSyCUchqbpTpMMsTno_PiweocZJxrqBUTfpY
-#   - Linux/Mac: export GEMINI_API_KEY=AIzaSyCUchqbpTpMMsTno_PiweocZJxrqBUTfpY
+#   - Windows (현재 세션): $env:GEMINI_API_KEY='암호화된_키'
+#   - Linux/Mac: export GEMINI_API_KEY='암호화된_키'
 #   - IDE 실행 설정에서 환경 변수 추가 (IntelliJ: Run > Edit Configurations > Environment variables)
+#   - run-local.ps1 스크립트 사용 (권장)
 gemini:
   api:
-    key: ${GEMINI_API_KEY:AIzaSyCUchqbpTpMMsTno_PiweocZJxrqBUTfpY}  # 환경 변수 우선, 없으면 기본값 사용 (임시)
+    key: ${GEMINI_API_KEY:}  # 환경 변수 필수 (기본값 없음 - 보안)
     base-url: https://generativelanguage.googleapis.com/v1  # v1 API 사용 (v1beta는 구버전, 사용하지 않음)
     model: gemini-2.5-flash  # 사용할 모델명 (이 프로젝트에서 사용 가능한 모델: gemini-2.5-flash)
+
+# 암호화 키 설정 (API 키 암호화/복호화용)
+# ⚠️ 보안 주의: ENCRYPTION_KEY는 환경 변수로만 설정하세요.
+# 환경 변수 설정 방법:
+#   - Windows (현재 세션): set ENCRYPTION_KEY=your_encryption_key_here
+#   - Linux/Mac: export ENCRYPTION_KEY=your_encryption_key_here
+#   - 또는 run-local.ps1 스크립트 사용 (권장)
+ENCRYPTION_KEY: ${ENCRYPTION_KEY:}  # 환경 변수에서 읽기 (기본값 없음 - 필수)

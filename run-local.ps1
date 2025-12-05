@@ -9,9 +9,11 @@ Write-Host ""
 # 환경 변수 설정
 Write-Host "[1/2] 환경 변수 설정 중..." -ForegroundColor Yellow
 
+# ⚠️ 보안 주의: API 키는 환경 변수로만 설정하세요.
+# 실제 운영 환경에서는 .env 파일이나 시스템 환경 변수를 사용하세요.
 # 특수문자가 포함된 경우 작은따옴표 사용
 $env:ENCRYPTION_KEY = 'TksJPfalBU2+pIU/A87y1nlswEHECggq5hS6JOOGZ2M='
-$env:GEMINI_API_KEY = 'onZNUTFo6WhS02toy3wryzG2L8XVJiz+p1OJxbSmyeoNJv6ljk2hHRR4gfOr9RSX'
+$env:GEMINI_API_KEY = '9HZFLOrxj42v41LUObdcdbe9tN7NkhSZYESgpXDyCyfLDft85vfS7+flo7ylq3KC'
 
 Write-Host "✓ ENCRYPTION_KEY: 설정됨" -ForegroundColor Green
 Write-Host "✓ GEMINI_API_KEY: 설정됨" -ForegroundColor Green

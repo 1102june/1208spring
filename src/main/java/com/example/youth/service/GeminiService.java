@@ -49,7 +49,7 @@ public class GeminiService {
     @Value("${gemini.api.key:}")
     private String encryptedApiKey;  // 암호화된 API 키 (환경 변수에서 로드)
 
-    @Value("${ENCRYPTION_KEY:}")
+    // 암호화 키는 환경 변수에서 직접 읽기 (Spring @Value는 환경 변수를 직접 읽지 못할 수 있음)
     private String encryptionKey;  // 암호화 키 (환경 변수에서 로드)
 
     @Value("${gemini.api.model:gemini-2.5-flash}")
@@ -86,6 +86,13 @@ public class GeminiService {
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .build();
         
+        // 암호화 키를 환경 변수에서 직접 읽기
+        this.encryptionKey = System.getenv("ENCRYPTION_KEY");
+        if (this.encryptionKey == null || this.encryptionKey.isEmpty()) {
+            // 시스템 속성에서도 확인
+            this.encryptionKey = System.getProperty("ENCRYPTION_KEY");
+        }
+        
         // API 키 복호화
         try {
             if (encryptedApiKey == null || encryptedApiKey.isEmpty()) {
@@ -93,13 +100,22 @@ public class GeminiService {
                 System.err.println("  환경 변수 설정 방법:");
                 System.err.println("    Windows: set GEMINI_API_KEY=your_encrypted_api_key_here");
                 System.err.println("    Linux/Mac: export GEMINI_API_KEY=your_encrypted_api_key_here");
+                System.err.println("    또는 run-local.ps1 스크립트 사용 (권장)");
                 this.apiKey = null;
             } else {
                 // 암호화 키 확인
                 if (encryptionKey == null || encryptionKey.isEmpty()) {
                     System.err.println("  ⚠️ ERROR: ENCRYPTION_KEY 환경 변수가 설정되지 않았습니다!");
-                    System.err.println("  .env 파일에 ENCRYPTION_KEY를 추가하세요.");
-                    System.err.println("  예: ENCRYPTION_KEY=your_encryption_key_here");
+                    System.err.println("");
+                    System.err.println("  해결 방법:");
+                    System.err.println("    1. run-local.ps1 스크립트 사용 (권장):");
+                    System.err.println("       .\\run-local.ps1");
+                    System.err.println("");
+                    System.err.println("    2. 환경 변수 직접 설정:");
+                    System.err.println("       Windows PowerShell: $env:ENCRYPTION_KEY='your_encryption_key_here'");
+                    System.err.println("       Windows CMD: set ENCRYPTION_KEY=your_encryption_key_here");
+                    System.err.println("       Linux/Mac: export ENCRYPTION_KEY=your_encryption_key_here");
+                    System.err.println("");
                     this.apiKey = null;
                 } else {
                     // API 키 복호화
