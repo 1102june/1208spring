@@ -38,22 +38,25 @@ public class NotificationScheduler {
         LocalDate today = now.toLocalDate();
         String currentTimeStr = now.format(DateTimeFormatter.ofPattern("HH:mm"));
 
-        log.debug("알림 스케줄러 실행: {} {}", today, currentTimeStr);
-
         // 활성화된 이벤트만 조회 (비활성화된 이벤트는 제외)
         List<CalendarEvent> events = calendarEventRepository.findAll()
                 .stream()
                 .filter(event -> event.getIsActive() == ActiveStatus.Y)
                 .toList();
 
+        log.info("알림 스케줄러 실행: {} {}, 활성 이벤트 수: {}", today, currentTimeStr, events.size());
+
         for (CalendarEvent event : events) {
             try {
                 // 1. 7일 전 알림
                 if (event.isSevenDaysAlert() && event.getSevenDaysAlertTime() != null) {
                     LocalDate alertDate = event.getEndDate().minusDays(7);
-                    if (alertDate.isEqual(today) && currentTimeStr.equals(event.getSevenDaysAlertTime())) {
+                    String alertTime = normalizeTimeFormat(event.getSevenDaysAlertTime());
+                    if (alertDate.isEqual(today) && currentTimeStr.equals(alertTime)) {
                         String notificationKey = event.getEventId() + "_7days";
                         if (!isNotificationSent(notificationKey, now)) {
+                            log.info("7일 전 알림 조건 일치: EventId={}, EndDate={}, AlertDate={}, Time={}", 
+                                    event.getEventId(), event.getEndDate(), alertDate, alertTime);
                             sendNotification(event, "7일 남았습니다!", notificationKey);
                         }
                     }
@@ -62,9 +65,12 @@ public class NotificationScheduler {
                 // 2. 1일 전 알림
                 if (event.isOneDayAlert() && event.getOneDayAlertTime() != null) {
                     LocalDate alertDate = event.getEndDate().minusDays(1);
-                    if (alertDate.isEqual(today) && currentTimeStr.equals(event.getOneDayAlertTime())) {
+                    String alertTime = normalizeTimeFormat(event.getOneDayAlertTime());
+                    if (alertDate.isEqual(today) && currentTimeStr.equals(alertTime)) {
                         String notificationKey = event.getEventId() + "_1day";
                         if (!isNotificationSent(notificationKey, now)) {
+                            log.info("1일 전 알림 조건 일치: EventId={}, EndDate={}, AlertDate={}, Time={}", 
+                                    event.getEventId(), event.getEndDate(), alertDate, alertTime);
                             sendNotification(event, "1일(내일) 마감입니다!", notificationKey);
                         }
                     }
@@ -73,9 +79,12 @@ public class NotificationScheduler {
                 // 3. 사용자 지정 알림
                 if (event.isCustomAlert() && event.getCustomAlertDays() != null && event.getCustomAlertTime() != null) {
                     LocalDate alertDate = event.getEndDate().minusDays(event.getCustomAlertDays());
-                    if (alertDate.isEqual(today) && currentTimeStr.equals(event.getCustomAlertTime())) {
+                    String alertTime = normalizeTimeFormat(event.getCustomAlertTime());
+                    if (alertDate.isEqual(today) && currentTimeStr.equals(alertTime)) {
                         String notificationKey = event.getEventId() + "_custom_" + event.getCustomAlertDays();
                         if (!isNotificationSent(notificationKey, now)) {
+                            log.info("커스텀 알림 조건 일치: EventId={}, EndDate={}, AlertDate={}, Days={}, Time={}", 
+                                    event.getEventId(), event.getEndDate(), alertDate, event.getCustomAlertDays(), alertTime);
                             sendNotification(event, event.getCustomAlertDays() + "일 남았습니다!", notificationKey);
                         }
                     }
@@ -84,6 +93,27 @@ public class NotificationScheduler {
                 log.error("알림 발송 중 오류 발생 (eventId: {}): {}", event.getEventId(), e.getMessage(), e);
             }
         }
+    }
+    
+    /**
+     * 시간 형식을 정규화 (H:mm -> HH:mm)
+     * 예: "9:00" -> "09:00", "09:00" -> "09:00"
+     */
+    private String normalizeTimeFormat(String time) {
+        if (time == null || time.isEmpty()) {
+            return time;
+        }
+        try {
+            String[] parts = time.split(":");
+            if (parts.length == 2) {
+                String hour = String.format("%02d", Integer.parseInt(parts[0].trim()));
+                String minute = String.format("%02d", Integer.parseInt(parts[1].trim()));
+                return hour + ":" + minute;
+            }
+        } catch (Exception e) {
+            log.warn("시간 형식 정규화 실패: {}", time);
+        }
+        return time;
     }
 
     /**
@@ -109,7 +139,8 @@ public class NotificationScheduler {
         String title = "청년정책 알림";
         String body = String.format("[%s] %s", event.getTitle(), dDayMessage);
         
-        log.info("푸시 알림 발송 시도: User={}, EventId={}, Msg={}", userId, event.getEventId(), body);
+        log.info("푸시 알림 발송 시도: User={}, EventId={}, Title={}, Body={}", 
+                userId, event.getEventId(), title, body);
 
         // FcmService를 통해 알림 발송
         try {
@@ -117,12 +148,12 @@ public class NotificationScheduler {
             if (success) {
                 // 발송 성공 시 이력 저장
                 sentNotifications.put(notificationKey, LocalDateTime.now());
-                log.info("푸시 알림 발송 성공: User={}, EventId={}", userId, event.getEventId());
+                log.info("✅ 푸시 알림 발송 성공: User={}, EventId={}, Key={}", userId, event.getEventId(), notificationKey);
             } else {
-                log.warn("푸시 알림 발송 실패: User={}, EventId={}", userId, event.getEventId());
+                log.warn("❌ 푸시 알림 발송 실패: User={}, EventId={} (FCM 토큰이 없거나 발송 실패)", userId, event.getEventId());
             }
         } catch (Exception e) {
-            log.error("FCM 발송 중 예외 발생: User={}, EventId={}, Error={}", 
+            log.error("❌ FCM 발송 중 예외 발생: User={}, EventId={}, Error={}", 
                     userId, event.getEventId(), e.getMessage(), e);
         }
     }

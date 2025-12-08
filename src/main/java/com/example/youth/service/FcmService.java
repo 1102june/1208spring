@@ -33,10 +33,15 @@ public class FcmService {
                     .build();
 
             String response = FirebaseMessaging.getInstance().send(message);
-            System.out.println("FCM 알림 발송 성공: " + response);
+            System.out.println("✅ FCM 알림 발송 성공: MessageId=" + response + ", Title=" + title);
             return true;
         } catch (FirebaseMessagingException e) {
-            System.err.println("FCM 알림 발송 실패: " + e.getMessage());
+            System.err.println("❌ FCM 알림 발송 실패: " + e.getMessage() + ", ErrorCode=" + e.getErrorCode());
+            e.printStackTrace();
+            return false;
+        } catch (Exception e) {
+            System.err.println("❌ FCM 알림 발송 중 예외 발생: " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }
@@ -51,9 +56,10 @@ public class FcmService {
     public boolean sendNotificationToUser(String userId, String title, String body) {
         String fcmToken = userService.getFcmTokenByUserId(userId);
         if (fcmToken == null || fcmToken.isEmpty()) {
-            System.err.println("사용자 FCM 토큰을 찾을 수 없습니다: " + userId);
+            System.err.println("❌ 사용자 FCM 토큰을 찾을 수 없습니다: " + userId);
             return false;
         }
+        System.out.println("FCM 토큰 확인: UserId=" + userId + ", Token 존재 여부=" + (fcmToken != null && !fcmToken.isEmpty()));
         return sendNotification(fcmToken, title, body);
     }
 
