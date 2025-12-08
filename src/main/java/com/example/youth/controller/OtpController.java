@@ -214,4 +214,65 @@ public class OtpController {
                 .body(ApiResponse.error("인증 여부 확인 중 오류가 발생했습니다."));
         }
     }
+
+    /**
+     * 회원탈퇴용 인증번호 발송 API
+     * 
+     * @param request 이메일 주소 포함
+     * @return 성공/실패 응답
+     * 
+     * 동작 방식:
+     * 1. 이메일이 등록된 사용자인지 확인 (등록되지 않은 이메일이면 오류)
+     * 2. 이메일로 6자리 인증번호 발송
+     * 3. 인증번호는 5분간 유효 (설정 변경 가능)
+     * 4. 같은 이메일로 재발송 시 기존 인증번호는 무효화됨
+     */
+    @PostMapping("/send/delete-account")
+    public ResponseEntity<ApiResponse<String>> sendOtpForDeleteAccount(@RequestBody OtpRequest request) {
+        String email = null;
+        try {
+            // 이메일 검증
+            if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+                return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("이메일 주소를 입력해주세요."));
+            }
+
+            email = request.getEmail().trim().toLowerCase();
+
+            // 이메일이 등록된 사용자인지 확인 (등록되지 않은 이메일이면 오류)
+            if (!userService.isEmailExists(email)) {
+                log.warn("등록되지 않은 이메일로 회원탈퇴 인증번호 발송 시도: {}", email);
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.error("등록되지 않은 이메일 주소입니다."));
+            }
+
+            // 인증번호 생성 및 발송
+            try {
+                otpService.generateAndSendOtp(email);
+                log.info("✅ 회원탈퇴용 인증번호 발송 성공: {}", email);
+                return ResponseEntity.ok(ApiResponse.success("인증번호가 이메일로 전송되었습니다. 이메일을 확인해주세요."));
+            } catch (RuntimeException e) {
+                // 이메일 발송 실패 시에도 인증번호는 생성되었으므로, 콘솔에 출력된 인증번호를 사용할 수 있음
+                String errorMessage = e.getMessage();
+                if (errorMessage.contains("EmailService가 설정되지 않았습니다") || 
+                    errorMessage.contains("이메일 발송에 실패했습니다")) {
+                    log.warn("⚠️ 이메일 발송 실패 또는 EmailService 미설정: {}. 콘솔 로그를 확인하세요.", email);
+                    // 개발 환경에서는 성공으로 처리 (콘솔에 인증번호 출력됨)
+                    return ResponseEntity.ok(ApiResponse.success("인증번호가 생성되었습니다. 서버 콘솔을 확인하세요 (개발 모드)."));
+                }
+                // 다른 오류는 그대로 throw
+                throw e;
+            }
+
+        } catch (IllegalArgumentException e) {
+            log.warn("회원탈퇴용 인증번호 발송 실패: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error(e.getMessage()));
+
+        } catch (Exception e) {
+            log.error("회원탈퇴용 인증번호 발송 중 오류 발생: {}", email != null ? email : "unknown", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error("인증번호 발송에 실패했습니다. 잠시 후 다시 시도해주세요."));
+        }
+    }
 }

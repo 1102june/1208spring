@@ -8,6 +8,11 @@ import com.example.youth.dto.UserProfileResponse;
 import com.example.youth.repository.InterestCategoryRepository;
 import com.example.youth.repository.UserProfileRepository;
 import com.example.youth.repository.UserRepository;
+import com.example.youth.repository.BookmarkRepository;
+import com.example.youth.repository.CalendarEventRepository;
+import com.example.youth.repository.UserActivityRepository;
+import com.example.youth.repository.NotificationRepository;
+import com.example.youth.repository.AIRecommendationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -27,6 +32,11 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
     private final InterestCategoryRepository interestCategoryRepository;
+    private final BookmarkRepository bookmarkRepository;
+    private final CalendarEventRepository calendarEventRepository;
+    private final UserActivityRepository userActivityRepository;
+    private final NotificationRepository notificationRepository;
+    private final AIRecommendationRepository aiRecommendationRepository;
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     /**
@@ -268,5 +278,65 @@ public class UserService {
             return "";
         }
         return passwordEncoder.encode(password);
+    }
+
+    /**
+     * 회원탈퇴
+     * 사용자와 관련된 모든 데이터를 삭제합니다.
+     * 
+     * @param userId 사용자 ID
+     * @throws RuntimeException 사용자를 찾을 수 없는 경우
+     */
+    @Transactional
+    public void deleteUser(String userId) {
+        // 1) 사용자 조회
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        // 2) 자식 테이블부터 삭제 (외래키 제약조건 고려)
+        // InterestCategory 삭제
+        List<InterestCategory> interests = interestCategoryRepository.findByUser_UserId(userId);
+        if (!interests.isEmpty()) {
+            interestCategoryRepository.deleteAll(interests);
+        }
+
+        // Bookmark 삭제
+        List<com.example.youth.DB.Bookmark> bookmarks = bookmarkRepository.findByUser(user);
+        if (!bookmarks.isEmpty()) {
+            bookmarkRepository.deleteAll(bookmarks);
+        }
+
+        // CalendarEvent 삭제
+        List<com.example.youth.DB.CalendarEvent> calendarEvents = calendarEventRepository.findByUser(user);
+        if (!calendarEvents.isEmpty()) {
+            calendarEventRepository.deleteAll(calendarEvents);
+        }
+
+        // UserActivity 삭제
+        List<com.example.youth.DB.UserActivity> userActivities = userActivityRepository.findByUser_UserIdOrderByCreatedAtDesc(userId);
+        if (!userActivities.isEmpty()) {
+            userActivityRepository.deleteAll(userActivities);
+        }
+
+        // Notification 삭제
+        List<com.example.youth.DB.Notification> notifications = notificationRepository.findByUser_UserIdOrderBySendDateDesc(userId);
+        if (!notifications.isEmpty()) {
+            notificationRepository.deleteAll(notifications);
+        }
+
+        // AIRecommendation 삭제
+        List<com.example.youth.DB.AIRecommendation> aiRecommendations = aiRecommendationRepository.findByUser_UserIdOrderByCreatedAtDesc(userId);
+        if (!aiRecommendations.isEmpty()) {
+            aiRecommendationRepository.deleteAll(aiRecommendations);
+        }
+
+        // UserProfile 삭제
+        List<UserProfile> profiles = userProfileRepository.findAllByUser_UserId(userId);
+        if (!profiles.isEmpty()) {
+            userProfileRepository.deleteAll(profiles);
+        }
+
+        // 3) User 삭제 (마지막)
+        userRepository.delete(user);
     }
 }

@@ -16,5 +16,5 @@
 # 환경 변수가 설정되어 있으면 환경 변수를 우선 사용합니다.
 gemini:
   api:
-    key: ${GEMINI_API_KEY:AIzaSyCUchqbpTpMMsTno_PiweocZJxrqBUTfpY}  # 환경 변수 우선, 없으면 기본값 사용 (임시)
+    key: ${GEMINI_API_KEY:AIzaSyAUzmdVnPlYNyPNCuN4GKN-Ar8mmODTzWg}  # 환경 변수 우선, 없으면 기본값 사용 (임시)
 

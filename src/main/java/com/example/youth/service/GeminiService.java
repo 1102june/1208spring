@@ -45,6 +45,7 @@ public class GeminiService {
     private final UserService userService;
     private final BookmarkRepository bookmarkRepository;
     private final InterestCategoryRepository interestCategoryRepository;
+    private final RateLimitService rateLimitService;
 
     @Value("${gemini.api.key:}")
     private String encryptedApiKey;  // 암호화된 API 키 (환경 변수에서 로드)
@@ -66,7 +67,8 @@ public class GeminiService {
             HousingNoticeRepository housingNoticeRepository,
             UserService userService,
             BookmarkRepository bookmarkRepository,
-            InterestCategoryRepository interestCategoryRepository) {
+            InterestCategoryRepository interestCategoryRepository,
+            RateLimitService rateLimitService) {
         this.profanityFilterService = profanityFilterService;
         this.policyRepository = policyRepository;
         this.housingComplexRepository = housingComplexRepository;
@@ -74,6 +76,7 @@ public class GeminiService {
         this.userService = userService;
         this.bookmarkRepository = bookmarkRepository;
         this.interestCategoryRepository = interestCategoryRepository;
+        this.rateLimitService = rateLimitService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -150,6 +153,18 @@ public class GeminiService {
      * @return 챗봇 응답
      */
     public Mono<ChatResponse> generateChatResponse(String message, String userId) {
+        // 0. Rate Limiting 체크
+        if (!rateLimitService.isAllowed(userId)) {
+            System.out.println("Rate Limit 초과: userId=" + userId + ", " + rateLimitService.getUsageInfo());
+            return Mono.just(ChatResponse.builder()
+                    .response("요청이 너무 많습니다. 잠시 후 다시 시도해주세요. (분당 5회 제한)")
+                    .actionLinks(new ArrayList<>())
+                    .build());
+        }
+        
+        // Rate Limit 카운터 증가
+        rateLimitService.increment(userId);
+        
         // 1. 비속어 및 비정상 요청 필터링
         if (profanityFilterService.containsProfanity(message)) {
             return Mono.just(ChatResponse.builder()
