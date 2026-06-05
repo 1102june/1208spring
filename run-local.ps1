@@ -1,38 +1,40 @@
 # 로컬 개발 서버 실행 스크립트
-# 환경 변수를 설정하고 스프링 부트를 실행합니다.
+$ErrorActionPreference = "Stop"
+Set-Location $PSScriptRoot
 
 Write-Host "=========================================" -ForegroundColor Cyan
-Write-Host "로컬 개발 서버 시작" -ForegroundColor Cyan
+Write-Host "WiseYoung 로컬 서버 시작" -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 환경 변수 설정
-Write-Host "[1/2] 환경 변수 설정 중..." -ForegroundColor Yellow
-
-# ⚠️ 보안 주의: API 키는 환경 변수로만 설정하세요.
-# 실제 운영 환경에서는 .env 파일이나 시스템 환경 변수를 사용하세요.
-# 특수문자가 포함된 경우 작은따옴표 사용
+# 환경 변수 (Gemini 챗봇용 — 로그인 API만 쓸 때는 없어도 서버는 기동됨)
 $env:ENCRYPTION_KEY = 'TksJPfalBU2+pIU/A87y1nlswEHECggq5hS6JOOGZ2M='
-$env:GEMINI_API_KEY = 'oEWfuAkbZCJPHlo0owTudTOHqUWIUXX/vY4Ka7z5Ufpq4h98M57Pl7QVIdQiu6er'
+$env:GEMINI_API_KEY = 'DDc7Csizrex/VD+7vXQUHQf1LHT4Zlyjm6OskFedbaMfFGyEKtHQmdN/iMpsCL4I'
 
-Write-Host "✓ ENCRYPTION_KEY: 설정됨" -ForegroundColor Green
-Write-Host "✓ GEMINI_API_KEY: 설정됨" -ForegroundColor Green
+# DB (기본값: application.yml — root / 1234 / wise_young)
+if (-not $env:DB_USERNAME) { $env:DB_USERNAME = "root" }
+if (-not $env:DB_PASSWORD) { $env:DB_PASSWORD = "1234" }
+
+Write-Host "[확인] ENCRYPTION_KEY: 설정됨" -ForegroundColor Green
+Write-Host "[확인] GEMINI_API_KEY: 설정됨" -ForegroundColor Green
+Write-Host "[확인] DB: $($env:DB_USERNAME)@127.0.0.1:3306/wise_young" -ForegroundColor Green
 Write-Host ""
 
-# 환경 변수 확인
-if ([string]::IsNullOrEmpty($env:ENCRYPTION_KEY)) {
-    Write-Host "❌ ENCRYPTION_KEY가 설정되지 않았습니다!" -ForegroundColor Red
-    exit 1
+# MariaDB 포트 확인
+$maria = Get-NetTCPConnection -LocalPort 3306 -State Listen -ErrorAction SilentlyContinue
+if (-not $maria) {
+    Write-Host "경고: MariaDB(3306)가 listening 상태가 아닙니다. 서버 기동이 실패할 수 있습니다." -ForegroundColor Yellow
 }
 
-if ([string]::IsNullOrEmpty($env:GEMINI_API_KEY)) {
-    Write-Host "❌ GEMINI_API_KEY가 설정되지 않았습니다!" -ForegroundColor Red
-    exit 1
+# 8080 이미 사용 중이면 안내
+$port8080 = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
+if ($port8080) {
+    Write-Host "경고: 8080 포트가 이미 사용 중입니다 (PID $($port8080.OwningProcess))." -ForegroundColor Yellow
+    Write-Host "       기존 서버를 종료하거나 다른 포트를 사용하세요." -ForegroundColor Yellow
+    Write-Host ""
 }
 
-# 스프링 부트 실행
-Write-Host "[2/2] 스프링 부트 서버 시작 중..." -ForegroundColor Yellow
+Write-Host "서버 시작: http://127.0.0.1:8080/api/health" -ForegroundColor Cyan
 Write-Host ""
 
-.\gradlew bootRun
-
+.\gradlew.bat bootRun --no-daemon

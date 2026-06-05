@@ -56,6 +56,8 @@ spring:
 
 server:
   port: 8080
+  # 외부(Android 실기기, 배포 서버)에서 접속 가능하도록 모든 인터페이스에서 수신
+  address: 0.0.0.0
 
 # 공공데이터 API 설정
 public-data:
