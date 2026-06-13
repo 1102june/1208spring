@@ -7,11 +7,12 @@ import com.google.firebase.FirebaseOptions;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.auth.FirebaseAuthException;
 import jakarta.annotation.PostConstruct;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 
 @Service
 public class FirebaseAuthService {
@@ -19,29 +20,27 @@ public class FirebaseAuthService {
     @PostConstruct
     public void initialize() {
         try {
-            // 클래스패스에서 리소스 로드 (JAR 패키징 시에도 동작)
-            ClassPathResource resource = new ClassPathResource("firebase-admin.json");
-            InputStream serviceAccount = resource.getInputStream();
+            String firebaseJson = System.getenv("FIREBASE_ADMIN_JSON");
+            InputStream serviceAccount = new ByteArrayInputStream(
+                    firebaseJson.getBytes(StandardCharsets.UTF_8)
+            );
 
             FirebaseOptions options = FirebaseOptions.builder()
                     .setCredentials(GoogleCredentials.fromStream(serviceAccount))
                     .build();
 
-            // 이미 초기화되어 있지 않은 경우에만 초기화
             if (FirebaseApp.getApps().isEmpty()) {
                 FirebaseApp.initializeApp(options);
             }
         } catch (IOException e) {
-            throw new RuntimeException("Firebase 초기화 실패: firebase-admin.json 파일을 확인해주세요.", e);
+            throw new RuntimeException("Firebase 초기화 실패", e);
         }
     }
 
-    // Firebase ID Token 검증
     public FirebaseToken verifyToken(String idToken) {
         if (idToken == null || idToken.isEmpty()) {
             throw new IllegalArgumentException("ID Token이 제공되지 않았습니다.");
         }
-        
         try {
             return FirebaseAuth.getInstance().verifyIdToken(idToken);
         } catch (FirebaseAuthException e) {
