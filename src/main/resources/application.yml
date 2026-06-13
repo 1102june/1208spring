@@ -1,7 +1,7 @@
 spring:
   datasource:
     driver-class-name: org.mariadb.jdbc.Driver
-    url: jdbc:mariadb://127.0.0.1:3306/wise_young?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Seoul
+    url: jdbc:mariadb://wiseyoung:3306/wise_young?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Seoul
     username: ${DB_USERNAME:root}  # 환경 변수 사용, 기본값: root
     password: ${DB_PASSWORD:1234}  # 환경 변수 사용, 기본값: 1234
 
@@ -14,28 +14,7 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.MariaDBDialect
 
-  # 이메일 설정 (범용 SMTP 서버 사용 - 모든 이메일 주소로 발송 가능)
-  # 🔥 Gmail SMTP 사용 (권장 - 모든 이메일 주소로 발송 가능):
-  #    - host: smtp.gmail.com
-  #    - port: 587
-  #    - EMAIL_USERNAME: Gmail 주소 (예: wiseyoung@gmail.com)
-  #    - EMAIL_PASSWORD: Gmail 앱 비밀번호 (2단계 인증 활성화 후 생성)
-  #    - Google 계정 > 보안 > 2단계 인증 활성화 > 앱 비밀번호 생성 필요
-  #    - ✅ Gmail SMTP는 네이버, 카카오, Outlook 등 모든 이메일 주소로 발송 가능
-  # 
-  # 🔥 네이버 메일 사용 시 (대안):
-  #    - host: smtp.naver.com
-  #    - port: 587
-  #    - EMAIL_USERNAME: 네이버 메일 주소 (예: your-email@naver.com)
-  #    - EMAIL_PASSWORD: 네이버 메일 비밀번호 (또는 앱 비밀번호)
-  #    - 네이버 메일 설정 > POP3/IMAP 설정 > SMTP 사용 허용 필요
-  # 
-  # 🔥 카카오 메일 사용 시 (대안):
-  #    - host: smtp.daum.net (카카오는 daum.net 사용)
-  #    - port: 587
-  #    - EMAIL_USERNAME: 카카오 메일 주소 (예: your-email@kakao.com 또는 your-email@hanmail.net)
-  #    - EMAIL_PASSWORD: 카카오 메일 비밀번호
-  #    - 카카오 메일 설정 > 외부 메일 앱 사용 설정 > SMTP 사용 허용 필요
+
   mail:
     # Gmail SMTP 설정 (기본값 - 모든 이메일 주소로 발송 가능)
     host: smtp.gmail.com
