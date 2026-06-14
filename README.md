@@ -22,10 +22,4 @@
 - Samsung Passkey
 
 ## 🔔 Push Notification Flow (Pipeline)
-Android App
-↓
-Spring Boot (Cloudtype)
-↓
-MariaDB ← 유저/정책/주거 데이터
-↓
-FCM → 사용자 알림 (1분 스케줄러)
+Android App -> Spring Boot (Cloudtype) MariaDB -> 유저/정책/주거 데이터 -> FCM → 사용자 알림 (1분 스케줄러)
