@@ -1,6 +1,6 @@
 <img width="4161" height="2402" alt="wiseyoung_출시구조도" src="https://github.com/user-attachments/assets/cc317d2e-ef72-479d-97b4-58bc0d57f500" />
 
-# 🚀 WISEYOUNG 슬기로운 청년생활 BACKEND 배포용 백엔드 서버
+# 🚀 WISEYOUNG 슬기로운 청년생활 배포용 Backend Server
 
 ## 🏗️ System Architecture
 <img width="4161" height="2402" alt="wiseyoung_출시구조도" src="https://github.com/user-attachments/assets/982e4347-1fa9-423b-bda2-6f33e0419576" />
