@@ -8,6 +8,7 @@ import com.example.youth.dto.UserProfileResponse;
 import com.example.youth.repository.BookmarkRepository;
 import com.example.youth.repository.PolicyRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -29,6 +30,10 @@ public class PolicyService {
 
     @Autowired
     private UserService userService;
+
+    // true이면 신청기간(날짜) 필터를 무시하고 DB의 모든 정책을 노출 (비공개 테스트용)
+    @Value("${app.policy.show-all:false}")
+    private boolean showAllPolicies;
 
     // 정책을 PolicyResponse로 변환 (북마크 여부 포함)
     private PolicyResponse convertToResponse(Policy policy, String userId) {
@@ -61,19 +66,21 @@ public class PolicyService {
         return convertToResponse(policy, userId);
     }
 
-    // 활성 정책 목록 조회
+    // 활성 정책 목록 조회 (show-all 모드면 날짜 무시하고 전체)
     public List<PolicyResponse> getActivePolicies(String userId) {
-        Date currentDate = new Date();
-        List<Policy> policies = policyRepository.findActivePolicies(currentDate);
+        List<Policy> policies = showAllPolicies
+                ? policyRepository.findAll()
+                : policyRepository.findActivePolicies(new Date());
         return policies.stream()
                 .map(policy -> convertToResponse(policy, userId))
                 .collect(Collectors.toList());
     }
 
-    // 카테고리별 활성 정책 목록 조회
+    // 카테고리별 활성 정책 목록 조회 (show-all 모드면 날짜 무시하고 카테고리만)
     public List<PolicyResponse> getActivePoliciesByCategory(String category, String userId) {
-        Date currentDate = new Date();
-        List<Policy> policies = policyRepository.findActivePoliciesByCategory(currentDate, category);
+        List<Policy> policies = showAllPolicies
+                ? policyRepository.findByCategory(category)
+                : policyRepository.findActivePoliciesByCategory(new Date(), category);
         return policies.stream()
                 .map(policy -> convertToResponse(policy, userId))
                 .collect(Collectors.toList());
@@ -136,7 +143,12 @@ public class PolicyService {
             Date currentDate = new Date();
             List<Policy> activePolicies;
             try {
-                if (category != null && !category.isEmpty()) {
+                if (showAllPolicies) {
+                    // show-all 모드: 날짜 무시
+                    activePolicies = (category != null && !category.isEmpty())
+                            ? policyRepository.findByCategory(category)
+                            : policyRepository.findAll();
+                } else if (category != null && !category.isEmpty()) {
                     activePolicies = policyRepository.findActivePoliciesByCategory(currentDate, category);
                 } else {
                     activePolicies = policyRepository.findActivePolicies(currentDate);
@@ -166,12 +178,16 @@ public class PolicyService {
             List<Policy> mutablePolicies = new java.util.ArrayList<>(activePolicies);
             
             return mutablePolicies.stream()
-                // 신청 기간이 현재 날짜 기준으로 남아있는 정책만 사용 (마감일이 지난 정책은 제외)
+                // 신청 기간이 현재 날짜 기준으로 남아있는 정책만 사용 (마감일 null=상시모집은 포함)
+                // show-all 모드면 날짜 필터를 건너뜀
                 .filter(policy -> {
+                    if (showAllPolicies) {
+                        return true;
+                    }
                     try {
-                        // applicationEnd가 null이면 제외 (마감일이 명시되지 않은 정책은 제외)
+                        // applicationEnd가 null이면 상시모집으로 간주하여 포함
                         if (policy.getApplicationEnd() == null) {
-                            return false;
+                            return true;
                         }
                         // java.sql.Date를 LocalDate로 직접 변환
                         LocalDate endDate = policy.getApplicationEnd().toLocalDate();

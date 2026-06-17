@@ -14,6 +14,7 @@ import com.example.youth.repository.HousingComplexRepository;
 import com.example.youth.repository.HousingNoticeRepository;
 import com.example.youth.repository.HousingRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -63,6 +64,10 @@ public class HousingService {
 
     @Autowired
     private UserService userService;
+
+    // true이면 신청기간(날짜) 필터를 무시하고 DB의 모든 공고를 노출 (비공개 테스트용)
+    @Value("${app.housing.show-all:false}")
+    private boolean showAllHousing;
 
     /**
      * HousingNotice와 HousingComplex를 병합하여 HousingResponse로 변환
@@ -277,13 +282,14 @@ public class HousingService {
         return convertToResponse(notice, complex, userId, null, null);
     }
 
-    // 활성 임대주택 목록 조회
+    // 활성 임대주택 목록 조회 (show-all 모드면 날짜 무시하고 전체 공고)
     public List<HousingResponse> getActiveHousing(String userId) {
-        java.util.Date currentDate = new java.util.Date();
-        List<HousingNotice> activeNotices = housingNoticeRepository.findActiveNotices(currentDate);
+        List<HousingNotice> notices = showAllHousing
+                ? housingNoticeRepository.findAll()
+                : housingNoticeRepository.findActiveNotices(new java.util.Date());
         List<HousingComplex> allComplexes = housingComplexRepository.findAll();
         
-        return mergeNoticesAndComplexes(activeNotices, allComplexes, userId, null, null);
+        return mergeNoticesAndComplexes(notices, allComplexes, userId, null, null);
     }
 
     // 지역별 임대주택 조회
@@ -310,8 +316,9 @@ public class HousingService {
             Integer radius, 
             Integer limit) {
         
-        java.util.Date currentDate = new java.util.Date();
-        List<HousingNotice> activeNotices = housingNoticeRepository.findActiveNotices(currentDate);
+        List<HousingNotice> activeNotices = showAllHousing
+                ? housingNoticeRepository.findAll()
+                : housingNoticeRepository.findActiveNotices(new java.util.Date());
         List<HousingComplex> allComplexes = housingComplexRepository.findAll();
 
         List<HousingResponse> merged = mergeNoticesAndComplexes(activeNotices, allComplexes, userId, userLat, userLon);
@@ -332,12 +339,15 @@ public class HousingService {
         }
         final String userRegion = profileRegion;
 
-        // 신청 기간이 현재 날짜 기준으로 남아있는 주택만 사용
+        // 신청 기간이 현재 날짜 기준으로 남아있는 주택만 사용 (마감일 null=상시 포함, show-all이면 전체)
         LocalDate today = LocalDate.now();
         List<HousingResponse> activeOnly = merged.stream()
                 .filter(housing -> {
+                    if (showAllHousing) {
+                        return true;
+                    }
                     if (housing.getApplicationEnd() == null) {
-                        return false;
+                        return true;
                     }
                     // java.sql.Date를 LocalDate로 직접 변환
                     LocalDate endDate = housing.getApplicationEnd().toLocalDate();
@@ -567,20 +577,24 @@ public class HousingService {
             Integer limit) {
         
         try {
-            java.util.Date currentDate = new java.util.Date();
             System.out.println("HousingService: 공고문 조회 시작, userId = " + userId);
-            List<HousingNotice> activeNotices = housingNoticeRepository.findActiveNotices(currentDate);
+            List<HousingNotice> activeNotices = showAllHousing
+                    ? housingNoticeRepository.findAll()
+                    : housingNoticeRepository.findActiveNotices(new java.util.Date());
             System.out.println("HousingService: 활성 공고문 개수 = " + (activeNotices != null ? activeNotices.size() : 0));
             
             int maxResults = limit != null ? limit : 50;
             
-            // 신청 기간이 현재 날짜 기준으로 남아있는 공고만 사용 (마감일이 지난 공고는 제외)
+            // 신청 기간이 현재 날짜 기준으로 남아있는 공고만 사용 (마감일 null=상시 포함, show-all이면 전체)
             LocalDate today = LocalDate.now();
             List<HousingNoticeResponse> result = activeNotices.stream()
                 .filter(notice -> {
-                    // applicationEnd가 null이면 제외 (마감일이 명시되지 않은 공고는 제외)
+                    if (showAllHousing) {
+                        return true;
+                    }
+                    // applicationEnd가 null이면 상시로 간주하여 포함
                     if (notice.getApplicationEnd() == null) {
-                        return false;
+                        return true;
                     }
                     // java.sql.Date를 LocalDate로 직접 변환
                     LocalDate endDate = notice.getApplicationEnd().toLocalDate();

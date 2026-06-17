@@ -1,7 +1,8 @@
 spring:
   datasource:
     driver-class-name: org.mariadb.jdbc.Driver
-    url: jdbc:mariadb://wiseyoung:3306/wise_young?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Seoul
+    # 배포(cloudtype) 시 DB_URL 환경 변수로 MariaDB 주소를 주입. 없으면 아래 기본값(현재 cloudtype DB 호스트) 사용.
+    url: ${DB_URL:jdbc:mariadb://wiseyoung:3306/wise_young?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Seoul}
     username: ${DB_USERNAME:root}  # 환경 변수 사용, 기본값: root
     password: ${DB_PASSWORD:1234}  # 환경 변수 사용, 기본값: 1234
 
@@ -76,3 +77,13 @@ gemini:
 #   - Linux/Mac: export ENCRYPTION_KEY=your_encryption_key_here
 #   - 또는 run-local.ps1 스크립트 사용 (권장)
 ENCRYPTION_KEY: ${ENCRYPTION_KEY:}  # 환경 변수에서 읽기 (기본값 없음 - 필수)
+
+# 앱 노출 정책
+# show-all=true 이면 신청기간(날짜) 필터를 무시하고 DB의 모든 정책/주택을 노출.
+# 마감 지난 25년 데이터로도 비공개 테스트에서 화면을 채우고 싶을 때 사용.
+# 26년 데이터로 최신화 후에는 false로 되돌리는 것을 권장.
+app:
+  policy:
+    show-all: ${POLICY_SHOW_ALL:false}
+  housing:
+    show-all: ${HOUSING_SHOW_ALL:false}

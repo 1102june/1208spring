@@ -12,12 +12,12 @@ import java.util.List;
 @Repository
 public interface PolicyRepository extends JpaRepository<Policy, String> {
     
-    // 신청 기간 내 정책 조회 (마감일이 남아있는 정책만, applicationEnd가 null이거나 지난 정책은 제외)
-    @Query("SELECT p FROM Policy p WHERE p.applicationStart <= :currentDate AND p.applicationEnd >= :currentDate")
+    // 신청 기간 내 정책 조회 (시작일/마감일이 null이면 상시모집으로 간주하여 포함)
+    @Query("SELECT p FROM Policy p WHERE (p.applicationStart IS NULL OR p.applicationStart <= :currentDate) AND (p.applicationEnd IS NULL OR p.applicationEnd >= :currentDate)")
     List<Policy> findActivePolicies(@Param("currentDate") Date currentDate);
     
-    // 신청 기간 내 + 카테고리별 정책 조회 (마감일이 남아있는 정책만, applicationEnd가 null이거나 지난 정책은 제외)
-    @Query("SELECT p FROM Policy p WHERE p.applicationStart <= :currentDate AND p.applicationEnd >= :currentDate AND p.category = :category")
+    // 신청 기간 내 + 카테고리별 정책 조회 (시작일/마감일이 null이면 상시모집으로 간주하여 포함)
+    @Query("SELECT p FROM Policy p WHERE (p.applicationStart IS NULL OR p.applicationStart <= :currentDate) AND (p.applicationEnd IS NULL OR p.applicationEnd >= :currentDate) AND p.category = :category")
     List<Policy> findActivePoliciesByCategory(@Param("currentDate") Date currentDate, @Param("category") String category);
     
     // 나이 범위에 맞는 정책 조회

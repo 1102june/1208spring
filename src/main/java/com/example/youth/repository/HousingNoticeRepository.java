@@ -24,8 +24,8 @@ public interface HousingNoticeRepository extends JpaRepository<HousingNotice, St
 
     // 신청 기간 내 공고 조회 (마감일이 남아있는 공고만, applicationEnd가 null이거나 지난 공고는 제외)
 
-    // Fetch notices whose application window includes the provided date
-    @Query("SELECT n FROM HousingNotice n WHERE n.applicationStart <= :currentDate AND n.applicationEnd >= :currentDate")
+    // Fetch notices whose application window includes the provided date (날짜가 null이면 상시 노출로 간주하여 포함)
+    @Query("SELECT n FROM HousingNotice n WHERE (n.applicationStart IS NULL OR n.applicationStart <= :currentDate) AND (n.applicationEnd IS NULL OR n.applicationEnd >= :currentDate)")
     List<HousingNotice> findActiveNotices(@Param("currentDate") Date currentDate);
 
     // 단지 식별자 또는 단지명으로 조회 (매칭용)
