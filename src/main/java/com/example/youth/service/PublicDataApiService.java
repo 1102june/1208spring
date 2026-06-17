@@ -13,6 +13,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 
@@ -173,6 +174,10 @@ public class PublicDataApiService {
         
         return WebClient.builder()
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
+                // 공공데이터 응답이 256KB(기본값)를 넘어 버퍼 초과로 실패하던 문제 방지: 16MB로 상향
+                .exchangeStrategies(ExchangeStrategies.builder()
+                        .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
+                        .build())
                 .build()
                 .get()
                 .uri(uri) // URI 객체를 직접 전달 (WebClient가 추가 인코딩하지 않음)
@@ -462,6 +467,10 @@ public class PublicDataApiService {
         
         return WebClient.builder()
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
+                // 공공데이터 응답이 256KB(기본값)를 넘어 버퍼 초과로 실패하던 문제 방지: 16MB로 상향
+                .exchangeStrategies(ExchangeStrategies.builder()
+                        .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
+                        .build())
                 .build()
                 .get()
                 .uri(uri) // URI 객체를 직접 전달 (WebClient가 추가 인코딩하지 않음)
