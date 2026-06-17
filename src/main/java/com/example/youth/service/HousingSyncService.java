@@ -1056,10 +1056,20 @@ public class HousingSyncService {
     private void saveNoticeData(List<LHRentalNoticeResponse.Item> noticeItems) {
         int savedCount = 0;
         int updatedCount = 0;
+        int skippedExpiredCount = 0;
+        java.time.LocalDate today = java.time.LocalDate.now();
         
         for (LHRentalNoticeResponse.Item notice : noticeItems) {
             try {
                 HousingNotice housingNotice = convertToHousingNotice(notice);
+                
+                // 이미 마감된(마감일 < 오늘) 공고는 저장하지 않는다. (만료 데이터 재유입 방지)
+                // 마감일(applicationEnd)이 null인 상시 공고는 보존한다.
+                if (housingNotice.getApplicationEnd() != null
+                        && housingNotice.getApplicationEnd().toLocalDate().isBefore(today)) {
+                    skippedExpiredCount++;
+                    continue;
+                }
                 
                 // DB에 저장 (이미 존재하면 업데이트)
                 boolean exists = housingNoticeRepository.existsById(housingNotice.getNoticeId());
@@ -1092,9 +1102,10 @@ public class HousingSyncService {
         System.out.println("공고문 데이터 저장 완료:");
         System.out.println("  - 총 공고문: " + noticeItems.size() + "건");
         System.out.println("  - 저장: " + savedCount + "건, 업데이트: " + updatedCount + "건");
+        System.out.println("  - 마감 제외(스킵): " + skippedExpiredCount + "건");
         System.out.println("========================================");
     }
-
+    
     /**
      * 단지정보 데이터를 housing_complex 테이블에 저장 (트랜잭션 적용)
      */
