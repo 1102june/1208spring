@@ -24,5 +24,11 @@
 - Google OAuth
 - Samsung Passkey
 
-## 🔔 Push Notification Flow (Pipeline)
-Android App -> Spring Boot (Cloudtype) MariaDB -> 유저/정책/주거 데이터 -> FCM → 사용자 알림 (1분 스케줄러)
+## 시스템 구조
+![전체 구조도](docs/diagrams/01-architecture.png)
+
+## 데이터 동기화 흐름
+![동기화 흐름](docs/diagrams/03-sync-flow.png)
+
+## DB 구조 (ER)
+![DB ER 구조도](docs/diagrams/04-db-er.png)
