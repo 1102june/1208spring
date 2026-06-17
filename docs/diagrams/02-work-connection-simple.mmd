@@ -1,0 +1,18 @@
+flowchart LR
+    subgraph Local["로컬 PC"]
+        C["Cursor"]
+        LS["Spring<br/>localhost:8080"]
+        LD[("MariaDB<br/>localhost")]
+        LS --> LD
+    end
+
+    subgraph Cloudtype["cloudtype"]
+        CS["Spring<br/>(공개 URL)"]
+        CD[("MariaDB")]
+        CS --> CD
+    end
+
+    C -->|"1) 버그검증"| LS
+    C -->|"2) sync 호출"| CS
+    LS -.->|"공공 API"| API["공공 API"]
+    CS -.->|"공공 API"| API

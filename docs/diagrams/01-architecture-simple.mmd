@@ -1,0 +1,20 @@
+flowchart LR
+    subgraph User["사용자"]
+        A["안드로이드 앱"]
+    end
+
+    subgraph Cloud["cloudtype"]
+        S["Spring Boot"]
+        D[("MariaDB")]
+    end
+
+    subgraph API["공공 API"]
+        P["온통청년 정책"]
+        L["LH 주택"]
+    end
+
+    A -->|"조회"| S
+    S -->|"저장"| D
+    S -->|"호출"| P
+    S -->|"호출"| L
+    S -->|"푸시"| A
