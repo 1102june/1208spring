@@ -1,8 +1,10 @@
 package com.example.youth.service;
 
+import com.example.youth.dto.publicdata.LHNoticeEnrichment;
 import com.example.youth.dto.publicdata.LHRentalHouseListResponse;
 import com.example.youth.dto.publicdata.LHRentalNoticeResponse;
 import com.example.youth.dto.publicdata.YouthPolicyResponse;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -73,6 +75,13 @@ public class PublicDataApiService {
 
     @Value("${youth-policy.url}")
     private String youthPolicyUrl;
+
+    // 신규: 분양임대공고별 상세정보/공급정보 조회 서비스
+    @Value("${public-data.lh.lease-info.url:https://apis.data.go.kr/B552555}")
+    private String lhLeaseInfoUrl;
+
+    @Value("${public-data.lh.lease-info.service-key:}")
+    private String lhLeaseInfoServiceKey;
 
     public PublicDataApiService(
             @Qualifier("lhWebClient") WebClient lhWebClient,
@@ -632,6 +641,120 @@ public class PublicDataApiService {
      */
     public Mono<YouthPolicyResponse> getAllYouthPolicyList() {
         return getYouthPolicyList(1, 100);
+    }
+
+    // ==========================================================================
+    // 신규: 분양임대공고별 상세정보(lhLeaseNoticeDtlInfo1) + 공급정보(lhLeaseNoticeSplInfo1)
+    //  - 공고 목록 응답의 PAN_ID/CCR_CNNT_SYS_DS_CD/SPL_INF_TP_CD/UPP_AIS_TP_CD/AIS_TP_CD 로 호출
+    //  - 두 API 모두 SPL_INF_TP_CD가 필수
+    // ==========================================================================
+
+    /**
+     * 공고 1건에 대해 상세정보 + 공급정보를 조회하여 보강 데이터를 반환한다.
+     * (블로킹 호출 - 동기화 배치에서 공고별로 순차 호출)
+     */
+    public LHNoticeEnrichment getLeaseNoticeEnrichment(String panId, String ccrCnntSysDsCd,
+            String splInfTpCd, String uppAisTpCd, String aisTpCd) {
+        LHNoticeEnrichment enrichment = new LHNoticeEnrichment();
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        // 1) 상세정보 조회 (주소/면적/세대수/난방/입주예정월/공고내용)
+        try {
+            String body = callLeaseInfoApi("lhLeaseNoticeDtlInfo1", "getLeaseNoticeDtlInfo1",
+                    panId, ccrCnntSysDsCd, splInfTpCd, uppAisTpCd, aisTpCd);
+            if (body != null && !body.trim().isEmpty()) {
+                JsonNode root = objectMapper.readTree(body);
+                JsonNode sbd = firstRow(root, "dsSbd");
+                if (sbd != null) {
+                    enrichment.setRnAdres(textOrNull(sbd, "LCT_ARA_ADR"));
+                    enrichment.setScAr(textOrNull(sbd, "SC_AR"));
+                    enrichment.setHshldCo(textOrNull(sbd, "HSH_CNT"));
+                    enrichment.setHtnFmlaNm(textOrNull(sbd, "HTN_FMLA_DS_CD_NM"));
+                    enrichment.setMvinXpcYm(textOrNull(sbd, "MVIN_XPC_YM"));
+                }
+                JsonNode ctrt = firstRow(root, "dsCtrtPlc");
+                if (ctrt != null) {
+                    enrichment.setPanDtlCts(textOrNull(ctrt, "PAN_DTL_CTS"));
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("상세정보 API 처리 실패 (panId=" + panId + "): " + e.getMessage());
+        }
+
+        // 2) 공급정보 조회 (대표 공급금액/예정가격)
+        try {
+            String body = callLeaseInfoApi("lhLeaseNoticeSplInfo1", "getLeaseNoticeSplInfo1",
+                    panId, ccrCnntSysDsCd, splInfTpCd, uppAisTpCd, aisTpCd);
+            if (body != null && !body.trim().isEmpty()) {
+                JsonNode root = objectMapper.readTree(body);
+                JsonNode row = firstRow(root, "dsList01");
+                if (row != null) {
+                    enrichment.setSplXpcAmt(textOrNull(row, "SPL_XPC_AMT"));
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("공급정보 API 처리 실패 (panId=" + panId + "): " + e.getMessage());
+        }
+
+        return enrichment;
+    }
+
+    /**
+     * lease-info 계열 API(상세/공급)를 호출하여 응답 본문(String)을 반환한다.
+     */
+    private String callLeaseInfoApi(String service, String operation, String panId,
+            String ccrCnntSysDsCd, String splInfTpCd, String uppAisTpCd, String aisTpCd) {
+        StringBuilder url = new StringBuilder(lhLeaseInfoUrl);
+        url.append("/").append(service).append("/").append(operation)
+           .append("?serviceKey=").append(lhLeaseInfoServiceKey) // 특수문자 없는 일반 인증키
+           .append("&PAN_ID=").append(encodeParam(panId))
+           .append("&CCR_CNNT_SYS_DS_CD=").append(encodeParam(ccrCnntSysDsCd))
+           .append("&SPL_INF_TP_CD=").append(encodeParam(splInfTpCd))
+           .append("&UPP_AIS_TP_CD=").append(encodeParam(uppAisTpCd))
+           .append("&AIS_TP_CD=").append(encodeParam(aisTpCd));
+
+        URI uri = URI.create(url.toString());
+        HttpClient httpClient = createInsecureHttpClient();
+
+        return WebClient.builder()
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .exchangeStrategies(ExchangeStrategies.builder()
+                        .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
+                        .build())
+                .build()
+                .get()
+                .uri(uri)
+                .accept(MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML)
+                .retrieve()
+                .bodyToMono(String.class)
+                .block(java.time.Duration.ofSeconds(30));
+    }
+
+    private String encodeParam(String value) {
+        if (value == null) return "";
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 응답 배열(JsonNode)에서 지정한 키의 배열을 찾아 첫 번째 row를 반환한다.
+     */
+    private JsonNode firstRow(JsonNode root, String arrayKey) {
+        if (root == null || !root.isArray()) return null;
+        for (JsonNode element : root) {
+            JsonNode arr = element.get(arrayKey);
+            if (arr != null && arr.isArray() && arr.size() > 0) {
+                return arr.get(0);
+            }
+        }
+        return null;
+    }
+
+    private String textOrNull(JsonNode node, String field) {
+        if (node == null) return null;
+        JsonNode v = node.get(field);
+        if (v == null || v.isNull()) return null;
+        String s = v.asText().trim();
+        return s.isEmpty() ? null : s;
     }
 }
 

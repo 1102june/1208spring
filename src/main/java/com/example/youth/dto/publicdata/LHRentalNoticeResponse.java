@@ -108,6 +108,13 @@ public class LHRentalNoticeResponse {
         @JsonProperty("PAN_SS")
         private String panSs; // 공고상태
 
+        // 상세/공급 정보 API 호출에 필요한 키 값들
+        @JsonProperty("CCR_CNNT_SYS_DS_CD")
+        private String ccrCnntSysDsCd; // 고객센터연계시스템구분코드
+
+        @JsonProperty("SPL_INF_TP_CD")
+        private String splInfTpCd; // 공급정보구분코드
+
         // 기타 정보
         @JsonProperty("ALL_CNT")
         private String allCnt; // 전체조회건수

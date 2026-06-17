@@ -3,6 +3,7 @@ package com.example.youth.service;
 import com.example.youth.DB.Housing;
 import com.example.youth.DB.HousingNotice;
 import com.example.youth.DB.HousingComplex;
+import com.example.youth.dto.publicdata.LHNoticeEnrichment;
 import com.example.youth.dto.publicdata.LHRentalHouseListResponse;
 import com.example.youth.dto.publicdata.LHRentalNoticeResponse;
 import com.example.youth.repository.HousingRepository;
@@ -1141,6 +1142,98 @@ public class HousingSyncService {
     }
 
     /**
+     * 기존 공고문(housing_notice)을 상세정보(lhLeaseNoticeDtlInfo1) + 공급정보(lhLeaseNoticeSplInfo1) API로 보강.
+     * 주소/전용면적/세대수/난방방식/입주예정월/공고내용/대표공급가를 채운다.
+     * 각 공고를 개별 트랜잭션(save)으로 커밋하므로 중간 실패해도 진행분은 보존된다.
+     *
+     * @param limit 처리할 최대 공고 수 (0 이하이면 전체)
+     * @param onlyMissing true이면 이미 주소(rnAdres)가 채워진 공고는 건너뜀
+     */
+    public Map<String, Object> enrichNoticesWithDetailInfo(int limit, boolean onlyMissing) {
+        List<HousingNotice> notices = housingNoticeRepository.findAll();
+        int processed = 0;
+        int enriched = 0;
+        int skipped = 0;
+        int failed = 0;
+
+        System.out.println("========================================");
+        System.out.println("공고 상세/공급 정보 보강 시작 - 대상 공고: " + notices.size() + "건"
+                + " (limit=" + limit + ", onlyMissing=" + onlyMissing + ")");
+
+        for (HousingNotice notice : notices) {
+            if (limit > 0 && processed >= limit) {
+                break;
+            }
+
+            // 상세/공급 API 호출 키가 없으면 조회 불가 → 건너뜀
+            if (isBlank(notice.getPanId()) || isBlank(notice.getCcrCnntSysDsCd())
+                    || isBlank(notice.getSplInfTpCd()) || isBlank(notice.getUppAisTpCd())) {
+                skipped++;
+                continue;
+            }
+
+            // 이미 주소가 있는 공고는 건너뜀 (onlyMissing 모드)
+            if (onlyMissing && !isBlank(notice.getRnAdres())) {
+                skipped++;
+                continue;
+            }
+
+            processed++;
+            try {
+                LHNoticeEnrichment e = publicDataApiService.getLeaseNoticeEnrichment(
+                        notice.getPanId(),
+                        notice.getCcrCnntSysDsCd(),
+                        notice.getSplInfTpCd(),
+                        notice.getUppAisTpCd(),
+                        notice.getAisTpCd());
+
+                if (e != null && e.hasAnyData()) {
+                    if (e.getRnAdres() != null) notice.setRnAdres(e.getRnAdres());
+                    if (e.getScAr() != null) notice.setScAr(e.getScAr());
+                    if (e.getHshldCo() != null) notice.setHshldCo(e.getHshldCo());
+                    if (e.getHtnFmlaNm() != null) notice.setHtnFmlaNm(e.getHtnFmlaNm());
+                    if (e.getMvinXpcYm() != null) notice.setMvinXpcYm(e.getMvinXpcYm());
+                    if (e.getPanDtlCts() != null) notice.setPanDtlCts(e.getPanDtlCts());
+                    if (e.getSplXpcAmt() != null) notice.setSplXpcAmt(e.getSplXpcAmt());
+                    housingNoticeRepository.save(notice);
+                    enriched++;
+                }
+            } catch (Exception ex) {
+                failed++;
+                System.err.println("공고 보강 실패 (panId=" + notice.getPanId() + "): " + ex.getMessage());
+            }
+
+            if (processed % 50 == 0) {
+                System.out.println("  ...진행 중: processed=" + processed + ", enriched=" + enriched
+                        + ", skipped=" + skipped + ", failed=" + failed);
+            }
+
+            // 외부 API 부하 완화를 위한 짧은 지연
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("totalNotices", notices.size());
+        result.put("processed", processed);
+        result.put("enriched", enriched);
+        result.put("skipped", skipped);
+        result.put("failed", failed);
+
+        System.out.println("공고 상세/공급 정보 보강 완료: " + result);
+        System.out.println("========================================");
+        return result;
+    }
+
+    private boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
+    }
+
+    /**
      * 공고문 API Item을 HousingNotice 엔티티로 변환
      */
     private HousingNotice convertToHousingNotice(LHRentalNoticeResponse.Item notice) {
@@ -1194,6 +1287,8 @@ public class HousingSyncService {
                 .aisTpCd(notice.getAisTpCd())
                 .aisTpCdNm(notice.getAisTpCdNm())
                 .panSs(notice.getPanSs())
+                .ccrCnntSysDsCd(notice.getCcrCnntSysDsCd())
+                .splInfTpCd(notice.getSplInfTpCd())
                 .allCnt(notice.getAllCnt());
         
         // 신청 시작일 파싱
@@ -1341,7 +1436,10 @@ public class HousingSyncService {
         existing.setAisTpCd(newData.getAisTpCd());
         existing.setAisTpCdNm(newData.getAisTpCdNm());
         existing.setPanSs(newData.getPanSs());
+        existing.setCcrCnntSysDsCd(newData.getCcrCnntSysDsCd());
+        existing.setSplInfTpCd(newData.getSplInfTpCd());
         existing.setAllCnt(newData.getAllCnt());
+        // 주의: rnAdres/scAr/hshldCo 등 enrichment 필드는 상세정보 API로만 채우므로 여기서 덮어쓰지 않는다.
     }
 
     /**

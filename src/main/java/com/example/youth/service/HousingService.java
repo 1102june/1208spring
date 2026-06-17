@@ -97,8 +97,11 @@ public class HousingService {
                 : (notice != null ? notice.getHsmpNm() : null);
         builder.name(name);
         
-        // 주소: complex에서 가져옴
-        builder.address(complex != null ? complex.getRnAdres() : null);
+        // 주소: complex 우선, 없으면 공고 상세정보(rnAdres)로 폴백
+        String address = (complex != null && complex.getRnAdres() != null && !complex.getRnAdres().isEmpty())
+                ? complex.getRnAdres()
+                : (notice != null ? notice.getRnAdres() : null);
+        builder.address(address);
         
         // 단지정보 (complex) 필드들
         if (complex != null) {
@@ -125,6 +128,20 @@ public class HousingService {
             // 단지정보에 없는 필드만 공고문에서 채움
             if (builder.build().getHousingType() == null && notice.getAisTpCdNm() != null) {
                 builder.housingType(notice.getAisTpCdNm());
+            }
+
+            // 단지정보(complex)가 없으면 공고 상세정보 API로 보강한 필드로 채움
+            if (complex == null) {
+                if (notice.getHtnFmlaNm() != null && !notice.getHtnFmlaNm().isEmpty()) {
+                    builder.heatingType(notice.getHtnFmlaNm());
+                }
+                if (notice.getHshldCo() != null && !notice.getHshldCo().isEmpty()) {
+                    try {
+                        builder.totalUnits(Integer.parseInt(notice.getHshldCo().replaceAll("[^0-9]", "")));
+                    } catch (NumberFormatException ignored) {
+                        // 숫자 변환 실패 시 무시
+                    }
+                }
             }
         }
         

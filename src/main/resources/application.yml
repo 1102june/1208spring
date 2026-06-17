@@ -38,6 +38,11 @@ public-data:
       service-key: ${LH_RENTAL_NOTICE_SERVICE_KEY:}
       encoding-key: ${LH_RENTAL_NOTICE_ENCODING_KEY:lPzs%2BxT8j7c%2B%2FkeCPNXvMnNsIiQo5vkcZuCk7p%2F6g%2FV%2FpntFixwv2NHVJIg3fB7XtBfSpnaaNzFVbEPArspfNQ%3D%3D}  # 인코딩 키 (이미 URL 인코딩된 키)
       decoding-key: ${LH_RENTAL_NOTICE_DECODING_KEY:lPzs+xT8j7c+/keCPNXvMnNsIiQo5vkcZuCk7p/6g/V/pntFixwv2NHVJIg3fB7XtBfSpnaaNzFVbEPArspfNQ==}  # 디코딩 키 (원본 키)
+    # 신규: 분양임대공고별 상세정보/공급정보 조회 서비스
+    # 엔드포인트: https://apis.data.go.kr/B552555/lhLeaseNoticeDtlInfo1, lhLeaseNoticeSplInfo1
+    lease-info:
+      url: ${LH_LEASE_INFO_URL:https://apis.data.go.kr/B552555}
+      service-key: ${LH_LEASE_INFO_SERVICE_KEY:b18f2d9de78ce251a44e8d670902f1d1d200acc278dcd0ee74cce173803162b4}  # 일반 인증키 (특수문자 없어 인코딩/디코딩 동일)
 
 # 청년정책 API 설정
 youth-policy:

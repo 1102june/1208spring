@@ -51,6 +51,43 @@ public class HousingSyncController {
     }
     
     /**
+     * 기존 공고문을 상세정보/공급정보 API로 보강 (주소/면적/세대수/난방/입주예정월/공고내용/공급가).
+     * 장시간 작업이므로 백그라운드로 실행하고 즉시 응답한다. 진행 상황은 서버 로그로 확인.
+     *
+     * POST /api/admin/housing/enrich                       (전체, 모든 공고 처리)
+     * POST /api/admin/housing/enrich?limit=10              (10건만 - 테스트용)
+     * POST /api/admin/housing/enrich?onlyMissing=true      (주소 없는 공고만)
+     */
+    @PostMapping("/enrich")
+    public ResponseEntity<ApiResponse<Object>> enrichNotices(
+            @RequestParam(required = false, defaultValue = "0") int limit,
+            @RequestParam(required = false, defaultValue = "false") boolean onlyMissing,
+            @RequestParam(required = false, defaultValue = "true") boolean async) {
+        try {
+            if (async) {
+                new Thread(() -> {
+                    try {
+                        housingSyncService.enrichNoticesWithDetailInfo(limit, onlyMissing);
+                    } catch (Exception e) {
+                        System.err.println("공고 보강 백그라운드 작업 실패: " + e.getMessage());
+                        e.printStackTrace();
+                    }
+                }, "notice-enrich").start();
+                return ResponseEntity.ok(ApiResponse.success(
+                        "공고 상세/공급 정보 보강을 백그라운드로 시작했습니다. (limit=" + limit
+                                + ", onlyMissing=" + onlyMissing + ") 진행 상황은 서버 로그를 확인하세요."));
+            } else {
+                Map<String, Object> result = housingSyncService.enrichNoticesWithDetailInfo(limit, onlyMissing);
+                return ResponseEntity.ok(ApiResponse.success("공고 상세/공급 정보 보강 완료", result));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("공고 보강 중 오류 발생: " + e.getMessage()));
+        }
+    }
+
+    /**
      * housing_notice와 housing_complex를 매칭하여 housing 테이블에 저장
      * POST /api/admin/housing/match-and-save
      */

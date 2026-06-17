@@ -2,6 +2,7 @@ package com.example.youth.repository;
 
 import com.example.youth.DB.HousingNotice;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -33,4 +34,9 @@ public interface HousingNoticeRepository extends JpaRepository<HousingNotice, St
     // Lookup by either complex identifier or complex name (for matching)
     @Query("SELECT n FROM HousingNotice n WHERE n.hsmpSn = :identifier OR n.hsmpNm = :identifier")
     List<HousingNotice> findByIdentifier(@Param("identifier") String identifier);
+
+    // 마감일(applicationEnd)이 지정일 이전인(이미 마감된) 공고 삭제. applicationEnd가 null이면 상시로 간주하여 보존.
+    @Modifying
+    @Query("DELETE FROM HousingNotice n WHERE n.applicationEnd IS NOT NULL AND n.applicationEnd < :before")
+    int deleteExpiredBefore(@Param("before") Date before);
 }

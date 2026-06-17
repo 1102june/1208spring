@@ -50,6 +50,10 @@ public-data:
       service-key: ${LH_RENTAL_NOTICE_SERVICE_KEY:}
       encoding-key: ${LH_RENTAL_NOTICE_ENCODING_KEY:}
       decoding-key: ${LH_RENTAL_NOTICE_DECODING_KEY:}
+    # 신규: 분양임대공고별 상세정보/공급정보 조회 서비스
+    lease-info:
+      url: ${LH_LEASE_INFO_URL:https://apis.data.go.kr/B552555}
+      service-key: ${LH_LEASE_INFO_SERVICE_KEY:b18f2d9de78ce251a44e8d670902f1d1d200acc278dcd0ee74cce173803162b4}
 
 youth-policy:
   url: ${YOUTH_POLICY_API_URL:https://www.youthcenter.go.kr/go/ythip/getPlcy}

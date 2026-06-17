@@ -70,6 +70,36 @@ public class HousingNotice {
     @Column(length = 20)
     private String allCnt; // 전체조회건수
 
+    // === 상세/공급 정보 API 호출에 필요한 키 ===
+    @Column(length = 10)
+    private String ccrCnntSysDsCd; // 고객센터연계시스템구분코드
+
+    @Column(length = 10)
+    private String splInfTpCd; // 공급정보구분코드
+
+    // === 상세정보(lhLeaseNoticeDtlInfo1) API로 채우는 단지 상세 ===
+    @Column(length = 500)
+    private String rnAdres; // 단지 주소 (LCT_ARA_ADR)
+
+    @Column(length = 100)
+    private String scAr; // 전용면적 범위 (SC_AR)
+
+    @Column(length = 50)
+    private String hshldCo; // 총세대수 (HSH_CNT)
+
+    @Column(length = 100)
+    private String htnFmlaNm; // 난방방식 (HTN_FMLA_DS_CD_NM)
+
+    @Column(length = 50)
+    private String mvinXpcYm; // 입주예정월 (MVIN_XPC_YM)
+
+    @Column(columnDefinition = "TEXT")
+    private String panDtlCts; // 공고 상세내용 (PAN_DTL_CTS)
+
+    // === 공급정보(lhLeaseNoticeSplInfo1) API로 채우는 대표 공급가 ===
+    @Column(length = 50)
+    private String splXpcAmt; // 대표 예정가격/공급금액 (SPL_XPC_AMT)
+
     @Column(name = "created_at", updatable = false)
     private Date createdAt; // 생성일시
 

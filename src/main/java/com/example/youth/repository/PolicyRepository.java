@@ -2,6 +2,7 @@ package com.example.youth.repository;
 
 import com.example.youth.DB.Policy;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -40,5 +41,10 @@ public interface PolicyRepository extends JpaRepository<Policy, String> {
     // 잘못 생성된 ID를 가진 정책 조회 (POLICY_로 시작하는 ID)
     @Query("SELECT p FROM Policy p WHERE p.policyId LIKE 'POLICY_%'")
     List<Policy> findPoliciesWithInvalidId();
+
+    // 마감일(applicationEnd)이 지정일 이전인(이미 마감된) 정책 삭제. applicationEnd가 null이면 상시로 간주하여 보존.
+    @Modifying
+    @Query("DELETE FROM Policy p WHERE p.applicationEnd IS NOT NULL AND p.applicationEnd < :before")
+    int deleteExpiredBefore(@Param("before") Date before);
 }
 
