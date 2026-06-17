@@ -59,4 +59,48 @@ public class AdminCleanupController {
                     .body(ApiResponse.error("마감 데이터 삭제 중 오류 발생: " + e.getMessage()));
         }
     }
+
+    /**
+     * 정책/주택공고 데이터를 전부 삭제한다. (로컬-배포 DB를 동일 상태로 초기화 후 재동기화하기 위함)
+     * 실수 방지를 위해 confirm=true 가 반드시 필요하다.
+     *
+     * DELETE /api/admin/cleanup/all?target=both&confirm=true   (기본값: both)
+     * target: policies | notices | both
+     */
+    @DeleteMapping("/all")
+    @Transactional
+    public ResponseEntity<ApiResponse<Object>> deleteAll(
+            @RequestParam(required = false, defaultValue = "both") String target,
+            @RequestParam(required = false, defaultValue = "false") boolean confirm) {
+        if (!confirm) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("전체 삭제는 confirm=true 파라미터가 필요합니다."));
+        }
+        try {
+            Map<String, Object> result = new HashMap<>();
+            boolean doPolicies = "both".equalsIgnoreCase(target) || "policies".equalsIgnoreCase(target);
+            boolean doNotices = "both".equalsIgnoreCase(target) || "notices".equalsIgnoreCase(target);
+
+            if (doPolicies) {
+                long deleted = policyRepository.count();
+                policyRepository.deleteAllInBatch();
+                result.put("deletedPolicies", deleted);
+            }
+            if (doNotices) {
+                long deleted = housingNoticeRepository.count();
+                housingNoticeRepository.deleteAllInBatch();
+                result.put("deletedHousingNotices", deleted);
+            }
+
+            result.put("target", target);
+            result.put("remainingPolicies", policyRepository.count());
+            result.put("remainingHousingNotices", housingNoticeRepository.count());
+
+            return ResponseEntity.ok(ApiResponse.success("전체 삭제 완료 (target=" + target + ")", result));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("전체 삭제 중 오류 발생: " + e.getMessage()));
+        }
+    }
 }
