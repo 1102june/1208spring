@@ -3,9 +3,6 @@
 ## 배포서버 DB Flow
 <img width="2553" height="1934" alt="Untitled (8)" src="https://github.com/user-attachments/assets/cca57714-5c4e-452d-90e8-0462520d5734" />
 
-## 🏗️ System Architecture
-<img width="4161" height="2402" alt="wiseyoung_출시구조도" src="https://github.com/user-attachments/assets/982e4347-1fa9-423b-bda2-6f33e0419576" />
-
 ## 🛠️ Tech Stack
 - **Framework:** Spring Boot
 - **Database:** MariaDB
