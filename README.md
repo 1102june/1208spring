@@ -19,7 +19,8 @@
 * **스케줄링 기반 자동 푸시 알림:** 사용자의 설정 및 조건에 맞는 새로운 정책이 업데이트될 때 앱으로 알림을 전송합니다.
   
 ## API <-> DB Flow
-<img width="1278" height="178" alt="image" src="https://github.com/user-attachments/assets/18d42790-e3af-4e71-b1f1-615a5861dd1d" />
+<img width="4075" height="1072" alt="Untitled (7)" src="https://github.com/user-attachments/assets/064c57c2-dc7b-41f2-8d0f-310490e15613" />
+
 
 ## DATA 
 ![동기화 흐름](docs/diagrams/03-sync-flow.png)
