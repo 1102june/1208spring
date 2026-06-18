@@ -12,11 +12,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -107,6 +109,23 @@ public class PolicyService {
      * - 나이 / 지역 / 관심 카테고리를 최대한 활용하고
      * - 해당 정보가 없는 정책은 "제한 없음"으로 간주하여 완전히 제외하지 않음
      * - 점수 기반 정렬 후 상위 N개만 반환
+     *
+     * <h3>정책 추천 가중치 가이드라인 (Policy Weight Guidelines)</h3>
+     * <p>각 활성 정책에 대해 아래 항목을 합산한 뒤 점수 내림차순으로 정렬한다.</p>
+     * <ul>
+     *   <li><b>기본 점수</b>: +10 (모든 정책)</li>
+     *   <li><b>나이</b>: 정책 연령 범위 안 +30 / 범위 밖 -5 / 연령 제한 없음 +15</li>
+     *   <li><b>지역(region 필드)</b>: 사용자·정책 지역 포함 관계 +20 / 전국·전체 +10</li>
+     *   <li><b>제목(title) 지역명</b>: 사용자 지역 키워드 포함 시 +40
+     *       (예: 사용자 횡성 → 정책 제목에 "횡성군" 포함)</li>
+     *   <li><b>요약(summary) 지역명</b>: 사용자 지역 키워드 포함 시 +40 (제목과 동일 규칙)</li>
+     *   <li><b>관심 카테고리</b>: 사용자 관심분야와 정책 category 일치 +20</li>
+     *   <li><b>마감 임박</b>: 마감까지 0~10일 +0~+10 (가까울수록 높음)</li>
+     *   <li><b>신청 링크 없음</b>: link1·link2 모두 비어 있으면 -10</li>
+     * </ul>
+     * <p>지역 키워드는 프로필 region(시·도 + 시·군·구)에서 추출하며,
+     * 광역시·특별시·도·시·군·구 접미사를 제거한 뒤 본문에 포함 여부를 검사한다.</p>
+     * <p>동점 시 마감일이 빠른 정책을 우선한다. 최종 점수는 0 미만으로 내려가지 않는다.</p>
      */
     public List<PolicyResponse> getPersonalizedPolicies(String userId, String category, Integer limit) {
         try {
@@ -132,6 +151,7 @@ public class PolicyService {
 
             Integer age = profile.getAge();
             String userRegion = profile.getRegion();
+            final List<String> regionKeywords = extractRegionKeywords(userRegion);
             List<String> profileInterests = profile.getInterests();
             
             // interests가 null이면 빈 리스트로 초기화, 불변 리스트일 수 있으므로 가변 리스트로 복사
@@ -217,18 +237,26 @@ public class PolicyService {
                         score += 15.0;
                     }
 
-                    // 3-2. 지역 점수: 정책 지역이 사용자 지역을 포함하면 가산점
+                    // 3-2. 지역 점수: 정책 region 필드와 사용자 지역 매칭
                     String policyRegion = policy.getRegion();
                     if (userRegion != null && policyRegion != null) {
                         if (policyRegion.contains(userRegion) || userRegion.contains(policyRegion)) {
                             score += 20.0;
                         } else if (policyRegion.equals("전국") || policyRegion.equals("전체")) {
-                            // 전국 정책은 중간 점수
                             score += 10.0;
                         }
                     } else if (policyRegion != null && (policyRegion.equals("전국") || policyRegion.equals("전체"))) {
-                        // 지역 정보가 없지만 전국 정책인 경우
                         score += 10.0;
+                    }
+
+                    // 3-2a. 제목·요약에 사용자 지역명이 직접 언급되면 큰 가산점 (지역 변경 시 순위 차이 극대화)
+                    if (!regionKeywords.isEmpty()) {
+                        if (containsAnyRegionKeyword(policy.getTitle(), regionKeywords)) {
+                            score += 40.0;
+                        }
+                        if (containsAnyRegionKeyword(policy.getSummary(), regionKeywords)) {
+                            score += 40.0;
+                        }
                     }
 
                     // 3-3. 관심 카테고리 점수
@@ -246,14 +274,17 @@ public class PolicyService {
 
                     // 3-4. 마감 임박 가중치 (미래일 경우에만)
                     if (policy.getApplicationEnd() != null) {
-                        // java.sql.Date를 LocalDate로 직접 변환
                         LocalDate endDate = policy.getApplicationEnd().toLocalDate();
                         long daysUntilEnd = ChronoUnit.DAYS.between(today, endDate);
                         if (daysUntilEnd >= 0) {
-                            // 마감이 가까울수록 조금 더 높은 점수 (최대 +10, 최소 0)
                             double deadlineScore = Math.max(0.0, 10.0 - Math.min(daysUntilEnd, 10));
                             score += deadlineScore;
                         }
+                    }
+
+                    // 3-5. 신청 링크 없음: link1·link2 모두 없으면 감점
+                    if (hasNoApplicationLinks(policy)) {
+                        score -= 10.0;
                     }
 
                     // 최소 점수 보장 (음수 방지)
@@ -293,6 +324,58 @@ public class PolicyService {
             e.printStackTrace();
             throw e;
         }
+    }
+
+    /**
+     * 프로필 region 문자열에서 제목·요약 매칭용 키워드 추출.
+     * "경기도 횡성군" → ["경기", "횡성"], "대전광역시" → ["대전"]
+     */
+    private List<String> extractRegionKeywords(String userRegion) {
+        if (userRegion == null || userRegion.isBlank()) {
+            return List.of();
+        }
+        Set<String> keywords = new LinkedHashSet<>();
+        for (String part : userRegion.trim().split("\\s+")) {
+            String normalized = normalizeRegionToken(part);
+            if (normalized != null && normalized.length() >= 2) {
+                keywords.add(normalized);
+            }
+        }
+        return new ArrayList<>(keywords);
+    }
+
+    /** 광역시·도·시·군·구 등 행정구역 접미사 제거 */
+    private String normalizeRegionToken(String token) {
+        if (token == null || token.isBlank()) {
+            return null;
+        }
+        String t = token.trim();
+        String[] suffixes = {"특별자치시", "특별자치도", "광역시", "특별시", "도", "시", "군", "구"};
+        for (String suffix : suffixes) {
+            if (t.endsWith(suffix) && t.length() > suffix.length()) {
+                t = t.substring(0, t.length() - suffix.length());
+                break;
+            }
+        }
+        return t.isEmpty() ? null : t;
+    }
+
+    private boolean containsAnyRegionKeyword(String text, List<String> keywords) {
+        if (text == null || text.isBlank() || keywords.isEmpty()) {
+            return false;
+        }
+        for (String keyword : keywords) {
+            if (text.contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasNoApplicationLinks(Policy policy) {
+        boolean link1Empty = policy.getLink1() == null || policy.getLink1().trim().isEmpty();
+        boolean link2Empty = policy.getLink2() == null || policy.getLink2().trim().isEmpty();
+        return link1Empty && link2Empty;
     }
 
     /**
