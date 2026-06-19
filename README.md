@@ -26,10 +26,15 @@
 ## Github Guidline 
 
 | `feat` | 새로운 기능(Feature) 추가 | API, 비즈니스 로직, 스케줄러 등 **동작이 추가**될 때 |
+
 | `fix` | 버그·에러 수정(Fix) | 잘못된 동작, 장애, 데이터 오류 등 **문제 해결** |
+
 | `chore` | 빌드·인프라·설정 | 패키지, 환경 변수, 키 파일, Gradle 등 **기능과 무관한 유지보수** |
+
 | `docs` | 문서(Documentation) | README, API 명세, 아키텍처 문서 등 |
+
 | `refactor` | 구조 개선(Refactor) | **기능은 동일**, 코드 정리·분리·이름 변경 |
+
 | `style` | 포맷·린트 | 세미콜론, import 정리 등 **로직 변경 없음** |
 
 ### WiseYoung 에서의 예시
