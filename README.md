@@ -31,9 +31,9 @@
 | `docs` | 문서(Documentation) | README, API 명세, 아키텍처 문서 등 |
 | `refactor` | 구조 개선(Refactor) | **기능은 동일**, 코드 정리·분리·이름 변경 |
 | `style` | 포맷·린트 | 세미콜론, import 정리 등 **로직 변경 없음** |
+------|-----------|------|
 
 ### WiseYoung 에서의 예시
-
 #### feat — 새 기능
 ```
 feat: 사용자별 정책 Top-K 추천 캐시 및 주간 sync 스케줄러 추가
