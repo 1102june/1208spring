@@ -17,9 +17,7 @@
 * **사용자 맞춤형 정보 제공:** 클라이언트(Android)의 요청에 따라 필터링된 맞춤형 정보를 REST API 형태로 제공합니다.
 * **스케줄링 기반 자동 푸시 알림:** 사용자의 설정 및 조건에 맞는 새로운 정책이 업데이트될 때 앱으로 알림을 전송합니다.
 
-## DATA 
-![동기화 흐름](docs/diagrams/03-sync-flow.png)
-
+## API <-> DB Flow
 ## DB Structure ER
 ![DB ER 구조도](docs/diagrams/04-db-er.png)
 
