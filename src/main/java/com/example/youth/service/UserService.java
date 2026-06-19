@@ -37,6 +37,7 @@ public class UserService {
     private final UserActivityRepository userActivityRepository;
     private final NotificationRepository notificationRepository;
     private final AIRecommendationRepository aiRecommendationRepository;
+    private final UserPolicyRecommendationService userPolicyRecommendationService;
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     /**
@@ -194,6 +195,9 @@ public class UserService {
                     .toList();
             interestCategoryRepository.saveAll(newInterests);
         }
+
+        // 7) 추천 캐시(Top-K)만 해당 사용자 기준으로 갱신
+        userPolicyRecommendationService.refreshForUserAsync(userId);
     }
 
     /**

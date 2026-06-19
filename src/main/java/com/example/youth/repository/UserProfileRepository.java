@@ -20,5 +20,8 @@ public interface UserProfileRepository extends JpaRepository<UserProfile, Long> 
     // MariaDB에서 LIMIT 1을 사용하여 중복 결과 방지
     @Query(value = "SELECT * FROM user_profile WHERE user_id = :userId ORDER BY profile_id DESC LIMIT 1", nativeQuery = true)
     Optional<UserProfile> findByUser_UserId(@Param("userId") String userId);
+
+    @Query("SELECT DISTINCT p.user.userId FROM UserProfile p")
+    List<String> findDistinctUserIdsWithProfile();
 }
 

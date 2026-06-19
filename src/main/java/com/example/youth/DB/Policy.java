@@ -29,4 +29,10 @@ public class Policy {
     private java.sql.Date applicationEnd;
     private String link1;
     private String link2;
+
+    /** sync 시 전처리: link1·link2 중 하나라도 있으면 true */
+    private Boolean hasApplicationLink;
+
+    /** 정책 전처리(링크·메타 갱신) 시각 */
+    private java.time.LocalDateTime preprocessedAt;
 }

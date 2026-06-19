@@ -24,6 +24,12 @@ public class PolicySyncService {
     @Autowired
     private PolicyRepository policyRepository;
 
+    @Autowired
+    private PolicyPreprocessorService policyPreprocessorService;
+
+    @Autowired
+    private UserPolicyRecommendationService userPolicyRecommendationService;
+
     /**
      * 잘못 저장된 null 값이 있는 정책 데이터 삭제
      * - 제목이 null이거나 빈 문자열인 정책
@@ -211,6 +217,8 @@ public class PolicySyncService {
                             System.out.println("  - 수집된 정책: " + allItems.size() + "건");
                             System.out.println("  - 저장: " + savedCount + "건, 업데이트: " + updatedCount + "건");
                             System.out.println("========================================");
+
+                            runPostSyncPipeline();
                         },
                         error -> {
                             System.err.println("========================================");
@@ -219,6 +227,24 @@ public class PolicySyncService {
                             error.printStackTrace();
                         }
                 );
+    }
+
+    /**
+     * sync 직후: 정책 전처리 → 전 사용자 Top-K 배치 재계산.
+     */
+    public void runPostSyncPipeline() {
+        System.out.println("========================================");
+        System.out.println("정책 sync 후처리 시작 (전처리 + Top-K 배치)");
+        System.out.println("========================================");
+        try {
+            policyPreprocessorService.preprocessAllPolicies();
+            userPolicyRecommendationService.recomputeAllUsers();
+            System.out.println("정책 sync 후처리 완료");
+        } catch (Exception e) {
+            System.err.println("정책 sync 후처리 실패: " + e.getMessage());
+            e.printStackTrace();
+        }
+        System.out.println("========================================");
     }
 
     /**
@@ -446,6 +472,7 @@ public class PolicySyncService {
         existing.setApplicationEnd(newData.getApplicationEnd());
         existing.setLink1(newData.getLink1());
         existing.setLink2(newData.getLink2());
+        policyPreprocessorService.preprocessPolicy(existing);
     }
 }
 
