@@ -24,6 +24,14 @@ public class HousingNoticeResponse {
     private Date applicationStart; // 신청 시작일
     private Date applicationEnd; // 신청 종료일
     private String cnpCdNm; // 지역명
+    /** housing_complex 매칭 광역시도명 */
+    private String brtcNm;
+    /** housing_complex 매칭 시군구명 */
+    private String signguNm;
+    /** 표시용 지역 (예: 경기도 부천시) */
+    private String region;
+    /** 사용자 프로필 지역과 일치 여부 (정렬·UI용) */
+    private Boolean matchesUserRegion;
     private String uppAisTpNm; // 상위 공고유형명
     private String aisTpCdNm; // 공고유형명
     private String panSs; // 공고상태

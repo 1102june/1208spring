@@ -7,6 +7,7 @@ import com.example.youth.DB.HousingNotice;
 import com.example.youth.common.ContentType;
 import com.example.youth.dto.HousingResponse;
 import com.example.youth.dto.HousingComplexResponse;
+import com.example.youth.dto.HousingNoticeListResponse;
 import com.example.youth.dto.HousingNoticeResponse;
 import com.example.youth.dto.UserProfileResponse;
 import com.example.youth.repository.BookmarkRepository;
@@ -559,9 +560,10 @@ public class HousingService {
     }
     
     /**
-     * 공고문을 HousingNoticeResponse로 변환
+     * 공고문을 HousingNoticeResponse로 변환 (단지정보에서 brtcNm·signguNm 매핑)
      */
-    private HousingNoticeResponse convertNoticeToResponse(HousingNotice notice, String userId) {
+    private HousingNoticeResponse convertNoticeToResponse(
+            HousingNotice notice, String userId, HousingComplex complex, List<String> userRegionKeywords) {
         boolean isBookmarked = false;
         if (notice.getNoticeId() != null && userId != null) {
             isBookmarked = bookmarkRepository
@@ -569,23 +571,30 @@ public class HousingService {
                     .map(bookmark -> bookmark.getIsActive() == ActiveStatus.Y)
                     .orElse(false);
         }
-        
-        // 매칭된 단지정보 조회
+
         HousingComplexResponse matchedComplex = null;
-        if (notice.getHsmpSn() != null) {
+        if (complex != null) {
+            matchedComplex = convertComplexToResponse(complex, userId, null, null);
+        } else if (notice.getHsmpSn() != null) {
             Optional<HousingComplex> complexOpt = housingComplexRepository.findById(notice.getHsmpSn());
             if (complexOpt.isPresent()) {
-                matchedComplex = convertComplexToResponse(complexOpt.get(), userId, null, null);
+                complex = complexOpt.get();
+                matchedComplex = convertComplexToResponse(complex, userId, null, null);
             }
         }
         if (matchedComplex == null && notice.getHsmpNm() != null) {
             Optional<HousingComplex> complexOpt = housingComplexRepository.findByHsmpNm(notice.getHsmpNm());
             if (complexOpt.isPresent()) {
-                matchedComplex = convertComplexToResponse(complexOpt.get(), userId, null, null);
+                complex = complexOpt.get();
+                matchedComplex = convertComplexToResponse(complex, userId, null, null);
             }
         }
-        
-        return HousingNoticeResponse.builder()
+
+        String brtcNm = complex != null ? complex.getBrtcNm() : null;
+        String signguNm = complex != null ? complex.getSignguNm() : null;
+        String regionLabel = buildNoticeRegionLabel(brtcNm, signguNm, notice.getCnpCdNm(), notice.getRnAdres());
+
+        HousingNoticeResponse response = HousingNoticeResponse.builder()
                 .noticeId(notice.getNoticeId())
                 .hsmpSn(notice.getHsmpSn())
                 .hsmpNm(notice.getHsmpNm())
@@ -598,12 +607,256 @@ public class HousingService {
                 .applicationStart(notice.getApplicationStart())
                 .applicationEnd(notice.getApplicationEnd())
                 .cnpCdNm(notice.getCnpCdNm())
+                .brtcNm(brtcNm)
+                .signguNm(signguNm)
+                .region(regionLabel)
                 .uppAisTpNm(notice.getUppAisTpNm())
                 .aisTpCdNm(notice.getAisTpCdNm())
                 .panSs(notice.getPanSs())
                 .isBookmarked(isBookmarked)
                 .matchedComplex(matchedComplex)
                 .build();
+
+        response.setMatchesUserRegion(matchesNoticeRegion(response, null, userRegionKeywords));
+        return response;
+    }
+
+    private Map<String, HousingComplex> buildComplexLookupMap() {
+        Map<String, HousingComplex> byId = new HashMap<>();
+        Map<String, HousingComplex> byName = new HashMap<>();
+        for (HousingComplex complex : housingComplexRepository.findAll()) {
+            if (complex.getComplexId() != null) {
+                byId.put(complex.getComplexId(), complex);
+            }
+            if (complex.getHsmpNm() != null && !complex.getHsmpNm().isBlank()) {
+                byName.putIfAbsent(complex.getHsmpNm().trim(), complex);
+            }
+        }
+        Map<String, HousingComplex> lookup = new HashMap<>(byId);
+        byName.forEach((name, complex) -> lookup.put("nm:" + name, complex));
+        return lookup;
+    }
+
+    private HousingComplex resolveComplexForNotice(HousingNotice notice, Map<String, HousingComplex> lookup) {
+        if (notice.getHsmpSn() != null && lookup.containsKey(notice.getHsmpSn())) {
+            return lookup.get(notice.getHsmpSn());
+        }
+        if (notice.getHsmpNm() != null) {
+            return lookup.get("nm:" + notice.getHsmpNm().trim());
+        }
+        return null;
+    }
+
+    private String buildNoticeRegionLabel(String brtcNm, String signguNm, String cnpCdNm, String rnAdres) {
+        if (brtcNm != null && !brtcNm.isBlank()) {
+            if (signguNm != null && !signguNm.isBlank()) {
+                return brtcNm.trim() + " " + signguNm.trim();
+            }
+            return brtcNm.trim();
+        }
+        if (cnpCdNm != null && !cnpCdNm.isBlank()) {
+            return cnpCdNm.trim();
+        }
+        if (rnAdres != null && !rnAdres.isBlank()) {
+            return rnAdres.trim();
+        }
+        return null;
+    }
+
+    private String buildNoticeRegionSearchText(HousingNoticeResponse notice) {
+        StringBuilder sb = new StringBuilder();
+        appendIfPresent(sb, notice.getBrtcNm());
+        appendIfPresent(sb, notice.getSignguNm());
+        appendIfPresent(sb, notice.getRegion());
+        appendIfPresent(sb, notice.getCnpCdNm());
+        if (notice.getMatchedComplex() != null) {
+            appendIfPresent(sb, notice.getMatchedComplex().getBrtcNm());
+            appendIfPresent(sb, notice.getMatchedComplex().getSignguNm());
+            appendIfPresent(sb, notice.getMatchedComplex().getRnAdres());
+        }
+        return sb.toString();
+    }
+
+    private void appendIfPresent(StringBuilder sb, String value) {
+        if (value != null && !value.isBlank()) {
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
+            sb.append(value.trim());
+        }
+    }
+
+    private boolean matchesNoticeRegion(HousingNoticeResponse notice, String regionFilter, List<String> keywords) {
+        String searchable = buildNoticeRegionSearchText(notice);
+        if (searchable.isBlank()) {
+            return regionFilter == null || regionFilter.isBlank();
+        }
+        if (regionFilter != null && !regionFilter.isBlank()) {
+            String filter = regionFilter.trim();
+            if (searchable.contains(filter)) {
+                return true;
+            }
+        }
+        if (keywords == null || keywords.isEmpty()) {
+            return regionFilter == null || regionFilter.isBlank();
+        }
+        for (String keyword : keywords) {
+            if (searchable.contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int regionMatchScore(HousingNoticeResponse notice, List<String> keywords) {
+        if (keywords == null || keywords.isEmpty()) {
+            return 0;
+        }
+        String searchable = buildNoticeRegionSearchText(notice);
+        if (searchable.isBlank()) {
+            return 0;
+        }
+        int score = 0;
+        for (String keyword : keywords) {
+            if (searchable.contains(keyword)) {
+                score += keyword.length() >= 3 ? 2 : 1;
+            }
+        }
+        if (notice.getBrtcNm() != null) {
+            for (String keyword : keywords) {
+                if (notice.getBrtcNm().contains(keyword)) {
+                    score += 3;
+                }
+            }
+        }
+        return score;
+    }
+
+    public List<String> getAvailableHousingRegions() {
+        List<String> regions = housingComplexRepository.findDistinctBrtcNm();
+        return regions != null ? regions : List.of();
+    }
+
+    /**
+     * 공고문 목록 (지역 필터·사용자 지역 우선 정렬 포함)
+     */
+    public HousingNoticeListResponse getHousingNoticesWithRegion(
+            String userId,
+            Integer limit,
+            String regionFilter) {
+
+        List<HousingNoticeResponse> notices = getHousingNotices(userId, limit, regionFilter);
+
+        String userRegion = null;
+        try {
+            UserProfileResponse profile = userService.getUserProfile(userId);
+            if (profile != null) {
+                userRegion = profile.getRegion();
+            }
+        } catch (Exception e) {
+            System.err.println("HousingService: 프로필 조회 실패 (공고 목록): " + e.getMessage());
+        }
+
+        return HousingNoticeListResponse.builder()
+                .userRegion(userRegion)
+                .appliedRegionFilter(
+                        regionFilter != null && !regionFilter.isBlank() ? regionFilter.trim() : null)
+                .availableRegions(getAvailableHousingRegions())
+                .notices(notices)
+                .build();
+    }
+
+    /**
+     * 공고문 목록 조회 (활성 공고만, 사용자 지역 우선 정렬)
+     */
+    public List<HousingNoticeResponse> getHousingNotices(
+            String userId,
+            Integer limit,
+            String regionFilter) {
+
+        try {
+            System.out.println("HousingService: 공고문 조회 시작, userId = " + userId
+                    + ", regionFilter = " + regionFilter);
+
+            List<HousingNotice> activeNotices = showAllHousing
+                    ? housingNoticeRepository.findAll()
+                    : housingNoticeRepository.findActiveNotices(new java.util.Date());
+
+            String userRegion = null;
+            try {
+                UserProfileResponse profile = userService.getUserProfile(userId);
+                if (profile != null) {
+                    userRegion = profile.getRegion();
+                }
+            } catch (Exception ignored) {
+                // 프로필 없으면 지역 우선 정렬 없이 진행
+            }
+            final List<String> userRegionKeywords = policyScoringService.extractRegionKeywords(userRegion);
+            final List<String> filterKeywords = regionFilter != null && !regionFilter.isBlank()
+                    ? policyScoringService.extractRegionKeywords(regionFilter)
+                    : List.of();
+
+            Map<String, HousingComplex> complexLookup = buildComplexLookupMap();
+            int maxResults = limit != null ? limit : 50;
+            LocalDate today = LocalDate.now();
+
+            List<HousingNoticeResponse> result = activeNotices.stream()
+                    .filter(notice -> {
+                        if (showAllHousing) {
+                            return true;
+                        }
+                        if (notice.getApplicationEnd() == null) {
+                            return true;
+                        }
+                        LocalDate endDate = notice.getApplicationEnd().toLocalDate();
+                        return !endDate.isBefore(today);
+                    })
+                    .map(notice -> {
+                        try {
+                            HousingComplex complex = resolveComplexForNotice(notice, complexLookup);
+                            return convertNoticeToResponse(notice, userId, complex, userRegionKeywords);
+                        } catch (Exception e) {
+                            System.err.println("HousingService: 공고문 변환 중 오류: " + e.getMessage());
+                            return null;
+                        }
+                    })
+                    .filter(Objects::nonNull)
+                    .filter(notice -> {
+                        if (regionFilter == null || regionFilter.isBlank()) {
+                            return true;
+                        }
+                        return matchesNoticeRegion(notice, regionFilter, filterKeywords);
+                    })
+                    .sorted((n1, n2) -> {
+                        int score1 = regionMatchScore(n1, userRegionKeywords);
+                        int score2 = regionMatchScore(n2, userRegionKeywords);
+                        if (score1 != score2) {
+                            return Integer.compare(score2, score1);
+                        }
+                        LocalDate end1 = n1.getApplicationEnd() != null
+                                ? n1.getApplicationEnd().toLocalDate()
+                                : LocalDate.MAX;
+                        LocalDate end2 = n2.getApplicationEnd() != null
+                                ? n2.getApplicationEnd().toLocalDate()
+                                : LocalDate.MAX;
+                        return end1.compareTo(end2);
+                    })
+                    .limit(maxResults)
+                    .collect(Collectors.toList());
+
+            System.out.println("HousingService: 최종 공고문 개수 = " + result.size());
+            return result;
+        } catch (Exception e) {
+            System.err.println("HousingService: 공고문 조회 중 오류: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
+    }
+
+    /** regionFilter 없는 호출 호환 */
+    @Deprecated
+    public List<HousingNoticeResponse> getHousingNotices(String userId, Integer limit) {
+        return getHousingNotices(userId, limit, null);
     }
     
     /**
@@ -652,69 +905,6 @@ public class HousingService {
                 .map(complex -> convertComplexToResponse(complex, userId, null, null))
                 .limit(maxResults)
                 .collect(Collectors.toList());
-    }
-    
-    /**
-     * 공고문 목록 조회 (활성 공고만)
-     */
-    public List<HousingNoticeResponse> getHousingNotices(
-            String userId, 
-            Integer limit) {
-        
-        try {
-            System.out.println("HousingService: 공고문 조회 시작, userId = " + userId);
-            List<HousingNotice> activeNotices = showAllHousing
-                    ? housingNoticeRepository.findAll()
-                    : housingNoticeRepository.findActiveNotices(new java.util.Date());
-            System.out.println("HousingService: 활성 공고문 개수 = " + (activeNotices != null ? activeNotices.size() : 0));
-            
-            int maxResults = limit != null ? limit : 50;
-            
-            // 신청 기간이 현재 날짜 기준으로 남아있는 공고만 사용 (마감일 null=상시 포함, show-all이면 전체)
-            LocalDate today = LocalDate.now();
-            List<HousingNoticeResponse> result = activeNotices.stream()
-                .filter(notice -> {
-                    if (showAllHousing) {
-                        return true;
-                    }
-                    // applicationEnd가 null이면 상시로 간주하여 포함
-                    if (notice.getApplicationEnd() == null) {
-                        return true;
-                    }
-                    // java.sql.Date를 LocalDate로 직접 변환
-                    LocalDate endDate = notice.getApplicationEnd().toLocalDate();
-                    // 마감일이 오늘 이후인 공고만 포함 (오늘 포함)
-                    return !endDate.isBefore(today);
-                })
-                .sorted((n1, n2) -> {
-                    // 신청 마감일 기준 오름차순 정렬
-                    LocalDate end1 = n1.getApplicationEnd() != null
-                            ? n1.getApplicationEnd().toLocalDate()
-                            : LocalDate.MAX;
-                    LocalDate end2 = n2.getApplicationEnd() != null
-                            ? n2.getApplicationEnd().toLocalDate()
-                            : LocalDate.MAX;
-                    return end1.compareTo(end2);
-                })
-                .map(notice -> {
-                    try {
-                        return convertNoticeToResponse(notice, userId);
-                    } catch (Exception e) {
-                        System.err.println("HousingService: 공고문 변환 중 오류: " + e.getMessage());
-                        return null;
-                    }
-                })
-                .filter(response -> response != null)
-                .limit(maxResults)
-                .collect(Collectors.toList());
-            
-            System.out.println("HousingService: 최종 공고문 개수 = " + result.size());
-            return result;
-        } catch (Exception e) {
-            System.err.println("HousingService: 공고문 조회 중 오류: " + e.getMessage());
-            e.printStackTrace();
-            return new java.util.ArrayList<>();
-        }
     }
 }
 
