@@ -21,6 +21,7 @@ import java.util.stream.Collectors;
 @Service
 public class PolicyService {
 
+    static final String DEFAULT_APPLICATION_PERIOD = "상시 신청";
     private static final int DISPLAY_SUMMARY_MAX_LEN = 80;
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy.MM.dd");
 
@@ -50,6 +51,8 @@ public class PolicyService {
 
         String applicationPeriodText = buildApplicationPeriodText(policy);
         String displaySummary = truncateSummary(policy.getSummary());
+        String applicationStartDisplay = buildApplicationStartDisplay(policy);
+        String applicationEndDisplay = buildApplicationEndDisplay(policy);
 
         return PolicyResponse.builder()
                 .policyId(policy.getPolicyId())
@@ -60,9 +63,10 @@ public class PolicyService {
                 .ageStart(policy.getAgeStart())
                 .ageEnd(policy.getAgeEnd())
                 .eligibility(policy.getEligibility())
-                .applicationStart(policy.getApplicationStart())
-                .applicationEnd(policy.getApplicationEnd())
+                .applicationStart(applicationStartDisplay)
+                .applicationEnd(applicationEndDisplay)
                 .applicationPeriodText(applicationPeriodText)
+                .applicationPeriod(applicationPeriodText)
                 .displaySummary(displaySummary)
                 .link1(policy.getLink1())
                 .link2(policy.getLink2())
@@ -84,24 +88,38 @@ public class PolicyService {
     }
 
     static String buildApplicationPeriodText(Policy policy) {
-        if (policy == null) {
-            return "상시신청";
+        if (policy == null || !hasCompleteApplicationPeriod(policy)) {
+            return DEFAULT_APPLICATION_PERIOD;
         }
         java.sql.Date start = policy.getApplicationStart();
         java.sql.Date end = policy.getApplicationEnd();
-        if (start == null && end == null) {
-            return "상시신청";
+        return start.toLocalDate().format(DATE_FMT) + " ~ " + end.toLocalDate().format(DATE_FMT);
+    }
+
+    static String buildApplicationStartDisplay(Policy policy) {
+        if (policy == null || policy.getApplicationStart() == null) {
+            return DEFAULT_APPLICATION_PERIOD;
         }
-        if (start != null && end != null) {
-            return start.toLocalDate().format(DATE_FMT) + " ~ " + end.toLocalDate().format(DATE_FMT);
+        if (!hasCompleteApplicationPeriod(policy)) {
+            return DEFAULT_APPLICATION_PERIOD;
         }
-        if (end != null) {
-            return " ~ " + end.toLocalDate().format(DATE_FMT);
+        return policy.getApplicationStart().toLocalDate().format(DATE_FMT);
+    }
+
+    static String buildApplicationEndDisplay(Policy policy) {
+        if (policy == null || policy.getApplicationEnd() == null) {
+            return DEFAULT_APPLICATION_PERIOD;
         }
-        if (start != null) {
-            return start.toLocalDate().format(DATE_FMT) + " ~";
+        if (!hasCompleteApplicationPeriod(policy)) {
+            return DEFAULT_APPLICATION_PERIOD;
         }
-        return "상시신청";
+        return policy.getApplicationEnd().toLocalDate().format(DATE_FMT);
+    }
+
+    private static boolean hasCompleteApplicationPeriod(Policy policy) {
+        return policy != null
+                && policy.getApplicationStart() != null
+                && policy.getApplicationEnd() != null;
     }
 
     static String truncateSummary(String summary) {
