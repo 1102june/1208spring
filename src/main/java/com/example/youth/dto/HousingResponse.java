@@ -36,5 +36,7 @@ public class HousingResponse {
     
     // 상세 정보
     private String housingType; // 주택유형
+    /** Android 카테고리 필터 호환 (housingType과 동일 값) */
+    private String category;
 }
 

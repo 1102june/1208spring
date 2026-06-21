@@ -65,6 +65,9 @@ public class HousingService {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private PolicyScoringService policyScoringService;
+
     // true이면 신청기간(날짜) 필터를 무시하고 DB의 모든 공고를 노출 (비공개 테스트용)
     @Value("${app.housing.show-all:false}")
     private boolean showAllHousing;
@@ -146,6 +149,20 @@ public class HousingService {
         }
         
         HousingResponse response = builder.build();
+
+        // 주택유형: 단지/공고 중 우선값 + Android category 필드 동기화
+        String resolvedType = response.getHousingType();
+        if (resolvedType == null && notice != null) {
+            if (notice.getUppAisTpNm() != null && !notice.getUppAisTpNm().isBlank()) {
+                resolvedType = notice.getUppAisTpNm();
+            } else if (notice.getAisTpCdNm() != null && !notice.getAisTpCdNm().isBlank()) {
+                resolvedType = notice.getAisTpCdNm();
+            }
+        }
+        if (resolvedType != null) {
+            response.setHousingType(resolvedType);
+            response.setCategory(resolvedType);
+        }
         
         // 사용자 위치가 제공된 경우 거리 계산
         if (userLat != null && userLon != null && 
@@ -331,7 +348,8 @@ public class HousingService {
             Double userLat, 
             Double userLon, 
             Integer radius, 
-            Integer limit) {
+            Integer limit,
+            String housingType) {
         
         List<HousingNotice> activeNotices = showAllHousing
                 ? housingNoticeRepository.findAll()
@@ -343,7 +361,6 @@ public class HousingService {
         int searchRadius = radius != null ? radius : 5000; // 기본 5km
         int maxResults = limit != null ? limit : 50;
 
-        // 프로필 기반 지역 추천을 위해 사용자 프로필 조회 (실패 시에는 지역 필터 없이 진행)
         String profileRegion = null;
         try {
             UserProfileResponse profile = userService.getUserProfile(userId);
@@ -351,12 +368,11 @@ public class HousingService {
                 profileRegion = profile.getRegion();
             }
         } catch (Exception e) {
-            // 프로필 조회 실패 시 지역 필터 없이 진행
             System.err.println("프로필 조회 중 오류 (지역 필터 없이 진행): " + e.getMessage());
         }
         final String userRegion = profileRegion;
+        final List<String> regionKeywords = policyScoringService.extractRegionKeywords(userRegion);
 
-        // 신청 기간이 현재 날짜 기준으로 남아있는 주택만 사용 (마감일 null=상시 포함, show-all이면 전체)
         LocalDate today = LocalDate.now();
         List<HousingResponse> activeOnly = merged.stream()
                 .filter(housing -> {
@@ -366,59 +382,111 @@ public class HousingService {
                     if (housing.getApplicationEnd() == null) {
                         return true;
                     }
-                    // java.sql.Date를 LocalDate로 직접 변환
                     LocalDate endDate = housing.getApplicationEnd().toLocalDate();
                     return !endDate.isBefore(today);
                 })
+                .filter(housing -> matchesHousingType(housing, housingType))
                 .collect(Collectors.toList());
 
-        // 사용자 위치가 있는 경우: 반경 + 거리순 추천
+        // GPS 우선: 좌표 있는 항목은 반경 내 추천
         if (userLat != null && userLon != null) {
-            return activeOnly.stream()
+            List<HousingResponse> geoMatched = activeOnly.stream()
+                    .filter(housing -> housing.getLatitude() != null && housing.getLongitude() != null)
                     .filter(housing -> {
-                        if (housing.getLatitude() == null || housing.getLongitude() == null) {
-                            return false;
-                        }
                         double distance = DistanceCalculator.calculateDistance(
                                 userLat, userLon,
                                 housing.getLatitude(), housing.getLongitude()
                         );
+                        housing.setDistanceFromUser(distance);
                         return distance <= searchRadius;
                     })
-                    .sorted((h1, h2) -> {
-                        if (h1.getDistanceFromUser() == null && h2.getDistanceFromUser() == null) {
-                            return 0;
-                        }
-                        if (h1.getDistanceFromUser() == null) return 1;
-                        if (h2.getDistanceFromUser() == null) return -1;
-                        return Double.compare(h1.getDistanceFromUser(), h2.getDistanceFromUser());
-                    })
+                    .sorted(Comparator.comparing(HousingResponse::getDistanceFromUser,
+                            Comparator.nullsLast(Double::compareTo)))
                     .limit(maxResults)
                     .collect(Collectors.toList());
+            if (!geoMatched.isEmpty()) {
+                return geoMatched;
+            }
         }
 
-        // 위치 정보가 없을 때: 사용자 지역(도/시) 기준 필터 + 마감일 순 정렬
-        return activeOnly.stream()
-                .filter(housing -> {
-                    // 사용자 지역 정보가 있을 경우, 주소에 해당 지역이 포함된 것 우선
-                    if (userRegion != null && housing.getAddress() != null) {
-                        return housing.getAddress().contains(userRegion);
-                    }
-                    // 지역 정보가 없으면 전체 활성 임대주택을 후보로 유지
-                    return true;
-                })
-                .sorted((h1, h2) -> {
-                    // 우선 신청 마감일 기준 오름차순 정렬
-                    LocalDate end1 = h1.getApplicationEnd() != null
-                            ? h1.getApplicationEnd().toLocalDate()
-                            : LocalDate.MAX;
-                        LocalDate end2 = h2.getApplicationEnd() != null
-                            ? h2.getApplicationEnd().toLocalDate()
-                            : LocalDate.MAX;
-                    return end1.compareTo(end2);
-                })
+        // 지역 키워드 매칭 (부산광역시 ↔ 부산, 부천시 ↔ 경기 부천 등)
+        List<HousingResponse> regionMatched = activeOnly.stream()
+                .filter(housing -> matchesRegion(housing, userRegion, regionKeywords))
+                .sorted(this::compareByApplicationEnd)
                 .limit(maxResults)
                 .collect(Collectors.toList());
+        if (!regionMatched.isEmpty()) {
+            return regionMatched;
+        }
+
+        // 단지정보 없이 공고만 있는 경우 등: 카테고리/활성 공고 전체 fallback
+        return activeOnly.stream()
+                .sorted(this::compareByApplicationEnd)
+                .limit(maxResults)
+                .collect(Collectors.toList());
+    }
+
+    /** 호환용 오버로드 — housingType/category 필터 없음 */
+    @Deprecated
+    public List<HousingResponse> getRecommendedHousing(
+            String userId, Double userLat, Double userLon, Integer radius, Integer limit) {
+        return getRecommendedHousing(userId, userLat, userLon, radius, limit, null);
+    }
+
+    private int compareByApplicationEnd(HousingResponse h1, HousingResponse h2) {
+        LocalDate end1 = h1.getApplicationEnd() != null
+                ? h1.getApplicationEnd().toLocalDate()
+                : LocalDate.MAX;
+        LocalDate end2 = h2.getApplicationEnd() != null
+                ? h2.getApplicationEnd().toLocalDate()
+                : LocalDate.MAX;
+        return end1.compareTo(end2);
+    }
+
+    private boolean matchesHousingType(HousingResponse housing, String housingType) {
+        if (housingType == null || housingType.isBlank()) {
+            return true;
+        }
+        String filter = housingType.trim();
+        String type = housing.getHousingType();
+        String category = housing.getCategory();
+        if (type != null && (type.contains(filter) || filter.contains(type))) {
+            return true;
+        }
+        if (category != null && (category.contains(filter) || filter.contains(category))) {
+            return true;
+        }
+        return false;
+    }
+
+    private boolean matchesRegion(HousingResponse housing, String userRegion, List<String> regionKeywords) {
+        if (userRegion == null || userRegion.isBlank()) {
+            return true;
+        }
+        String searchable = buildSearchableAddress(housing);
+        if (searchable.isBlank()) {
+            return true;
+        }
+        if (searchable.contains(userRegion.trim())) {
+            return true;
+        }
+        for (String keyword : regionKeywords) {
+            if (searchable.contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String buildSearchableAddress(HousingResponse housing) {
+        StringBuilder sb = new StringBuilder();
+        if (housing.getAddress() != null) {
+            sb.append(housing.getAddress());
+        }
+        if (housing.getName() != null) {
+            sb.append(' ').append(housing.getName());
+        }
+        return sb.toString().trim();
     }
     
     /**

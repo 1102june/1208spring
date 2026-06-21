@@ -41,9 +41,10 @@ public class HousingController {
             @RequestParam(required = false) Double lat,
             @RequestParam(required = false) Double lon,
             @RequestParam(required = false) Integer radius,
-            @RequestParam(required = false) Integer limit) {
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) String housingType,
+            @RequestParam(required = false) String category) {
         
-        // 헤더 또는 파라미터에서 userId 가져오기
         String finalUserId = userId != null ? userId : userIdParam;
         
         if (finalUserId == null || finalUserId.isEmpty()) {
@@ -51,8 +52,10 @@ public class HousingController {
                     .body(ApiResponse.error("사용자 ID가 필요합니다."));
         }
 
+        String typeFilter = housingType != null && !housingType.isBlank() ? housingType : category;
+
         List<HousingResponse> housingList = housingService.getRecommendedHousing(
-                finalUserId, lat, lon, radius, limit);
+                finalUserId, lat, lon, radius, limit, typeFilter);
         
         return ResponseEntity.ok(ApiResponse.success("임대주택 추천 목록 조회 성공", housingList));
     }

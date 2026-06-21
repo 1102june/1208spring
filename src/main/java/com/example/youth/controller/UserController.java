@@ -6,6 +6,7 @@ import com.example.youth.DB.User;
 import com.example.youth.DB.UserProfile;
 import com.example.youth.dto.ApiResponse;
 import com.example.youth.dto.ProfileRequest;
+import com.example.youth.dto.ProfileSaveResponse;
 import com.example.youth.dto.PushTokenRequest;
 import com.example.youth.service.FcmService;
 import com.example.youth.service.FirebaseAuthService;
@@ -141,7 +142,7 @@ public class UserController {
      * POST /auth/profile
      */
     @PostMapping("/profile")
-    public ResponseEntity<ApiResponse<String>> saveProfile(@RequestBody ProfileRequest profileRequest) {
+    public ResponseEntity<ApiResponse<ProfileSaveResponse>> saveProfile(@RequestBody ProfileRequest profileRequest) {
         try {
             // 1) Firebase ID Token 검증
             FirebaseToken decodedToken = firebaseAuthService.verifyToken(profileRequest.getIdToken());
@@ -189,9 +190,9 @@ public class UserController {
             }
 
             // 3) 프로필 저장 (기존 프로필이 있으면 업데이트, 없으면 생성)
-            userService.saveOrUpdateProfile(user.getUserId(), profileRequest);
+            ProfileSaveResponse saveResult = userService.saveOrUpdateProfile(user.getUserId(), profileRequest);
 
-            return ResponseEntity.ok(ApiResponse.success("프로필이 저장되었습니다.", null));
+            return ResponseEntity.ok(ApiResponse.success("프로필이 저장되었습니다.", saveResult));
         } catch (Exception e) {
             return ResponseEntity.status(500)
                     .body(ApiResponse.error("서버 오류가 발생했습니다: " + e.getMessage()));

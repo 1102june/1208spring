@@ -15,10 +15,14 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.time.format.DateTimeFormatter;
 import java.util.stream.Collectors;
 
 @Service
 public class PolicyService {
+
+    private static final int DISPLAY_SUMMARY_MAX_LEN = 80;
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy.MM.dd");
 
     @Autowired
     private PolicyRepository policyRepository;
@@ -44,6 +48,9 @@ public class PolicyService {
                 .map(bookmark -> bookmark.getIsActive() == ActiveStatus.Y)
                 .orElse(false);
 
+        String applicationPeriodText = buildApplicationPeriodText(policy);
+        String displaySummary = truncateSummary(policy.getSummary());
+
         return PolicyResponse.builder()
                 .policyId(policy.getPolicyId())
                 .title(policy.getTitle())
@@ -55,10 +62,57 @@ public class PolicyService {
                 .eligibility(policy.getEligibility())
                 .applicationStart(policy.getApplicationStart())
                 .applicationEnd(policy.getApplicationEnd())
+                .applicationPeriodText(applicationPeriodText)
+                .displaySummary(displaySummary)
                 .link1(policy.getLink1())
                 .link2(policy.getLink2())
                 .isBookmarked(isBookmarked)
                 .build();
+    }
+
+    /**
+     * 북마크 등 외부 서비스에서 정책 DTO 변환 시 사용.
+     */
+    public PolicyResponse toPolicyResponse(Policy policy, String userId) {
+        return convertToResponse(policy, userId);
+    }
+
+    public PolicyResponse toPolicyResponse(String policyId, String userId) {
+        return policyRepository.findById(policyId)
+                .map(p -> convertToResponse(p, userId))
+                .orElse(null);
+    }
+
+    static String buildApplicationPeriodText(Policy policy) {
+        if (policy == null) {
+            return "상시신청";
+        }
+        java.sql.Date start = policy.getApplicationStart();
+        java.sql.Date end = policy.getApplicationEnd();
+        if (start == null && end == null) {
+            return "상시신청";
+        }
+        if (start != null && end != null) {
+            return start.toLocalDate().format(DATE_FMT) + " ~ " + end.toLocalDate().format(DATE_FMT);
+        }
+        if (end != null) {
+            return " ~ " + end.toLocalDate().format(DATE_FMT);
+        }
+        if (start != null) {
+            return start.toLocalDate().format(DATE_FMT) + " ~";
+        }
+        return "상시신청";
+    }
+
+    static String truncateSummary(String summary) {
+        if (summary == null || summary.isBlank()) {
+            return "";
+        }
+        String trimmed = summary.trim().replaceAll("\\s+", " ");
+        if (trimmed.length() <= DISPLAY_SUMMARY_MAX_LEN) {
+            return trimmed;
+        }
+        return trimmed.substring(0, DISPLAY_SUMMARY_MAX_LEN - 3) + "...";
     }
 
     public PolicyResponse getPolicyById(String policyId, String userId) {

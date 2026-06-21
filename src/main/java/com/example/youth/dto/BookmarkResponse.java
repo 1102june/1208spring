@@ -18,5 +18,9 @@ public class BookmarkResponse {
     private String contentId;
     private String isActive;
     private LocalDateTime createdAt;
+    /** contentType=policy 일 때 정책 상세 */
+    private PolicyResponse policy;
+    /** contentType=housing 일 때 임대주택 상세 */
+    private HousingResponse housing;
 }
 

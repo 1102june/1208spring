@@ -4,6 +4,7 @@ import com.example.youth.DB.InterestCategory;
 import com.example.youth.DB.User;
 import com.example.youth.DB.UserProfile;
 import com.example.youth.dto.ProfileRequest;
+import com.example.youth.dto.ProfileSaveResponse;
 import com.example.youth.dto.UserProfileResponse;
 import com.example.youth.repository.InterestCategoryRepository;
 import com.example.youth.repository.UserProfileRepository;
@@ -110,10 +111,10 @@ public class UserService {
     }
 
     /**
-     * 프로필 저장/업데이트
+     * 프로필 저장/업데이트. 저장 직후 해당 사용자 Top-K 추천 캐시를 동기 갱신한다.
      */
     @Transactional
-    public void saveOrUpdateProfile(String userId, ProfileRequest profileRequest) {
+    public ProfileSaveResponse saveOrUpdateProfile(String userId, ProfileRequest profileRequest) {
         // 1) User 조회 (UserController에서 이미 생성되었으므로 존재해야 함)
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
@@ -196,8 +197,12 @@ public class UserService {
             interestCategoryRepository.saveAll(newInterests);
         }
 
-        // 7) 추천 캐시(Top-K)만 해당 사용자 기준으로 갱신
-        userPolicyRecommendationService.refreshForUserAsync(userId);
+        // 7) 추천 캐시(Top-K) 해당 사용자 기준 즉시 갱신 (프로필 저장과 동일 트랜잭션 커밋 후 반영)
+        int recommendationCount = userPolicyRecommendationService.recomputeForUser(userId);
+        return ProfileSaveResponse.builder()
+                .recommendationsRefreshed(true)
+                .recommendationCount(recommendationCount)
+                .build();
     }
 
     /**
