@@ -33,7 +33,4 @@ public interface HousingComplexRepository extends JpaRepository<HousingComplex, 
     // Find complexes with names containing the provided text
     @Query("SELECT c FROM HousingComplex c WHERE c.hsmpNm LIKE %:name%")
     List<HousingComplex> findByHsmpNmContaining(@Param("name") String name);
-
-    @Query("SELECT DISTINCT c.brtcNm FROM HousingComplex c WHERE c.brtcNm IS NOT NULL AND c.brtcNm <> '' ORDER BY c.brtcNm")
-    List<String> findDistinctBrtcNm();
 }

@@ -3,7 +3,6 @@ package com.example.youth.controller;
 import com.example.youth.dto.ApiResponse;
 import com.example.youth.dto.HousingResponse;
 import com.example.youth.dto.HousingComplexResponse;
-import com.example.youth.dto.HousingNoticeListResponse;
 import com.example.youth.dto.HousingNoticeResponse;
 import com.example.youth.dto.publicdata.LHRentalHouseListResponse;
 import com.example.youth.dto.publicdata.LHRentalNoticeResponse;
@@ -42,10 +41,9 @@ public class HousingController {
             @RequestParam(required = false) Double lat,
             @RequestParam(required = false) Double lon,
             @RequestParam(required = false) Integer radius,
-            @RequestParam(required = false) Integer limit,
-            @RequestParam(required = false) String housingType,
-            @RequestParam(required = false) String category) {
+            @RequestParam(required = false) Integer limit) {
         
+        // 헤더 또는 파라미터에서 userId 가져오기
         String finalUserId = userId != null ? userId : userIdParam;
         
         if (finalUserId == null || finalUserId.isEmpty()) {
@@ -53,10 +51,8 @@ public class HousingController {
                     .body(ApiResponse.error("사용자 ID가 필요합니다."));
         }
 
-        String typeFilter = housingType != null && !housingType.isBlank() ? housingType : category;
-
         List<HousingResponse> housingList = housingService.getRecommendedHousing(
-                finalUserId, lat, lon, radius, limit, typeFilter);
+                finalUserId, lat, lon, radius, limit);
         
         return ResponseEntity.ok(ApiResponse.success("임대주택 추천 목록 조회 성공", housingList));
     }
@@ -187,16 +183,14 @@ public class HousingController {
     }
 
     /**
-     * 공고문 목록 조회 (지역 필터·사용자 지역 우선 정렬)
-     * GET /api/housing/notices?userId={userId}&limit={limit}&region={region}
-     * region 생략 시 전체 공고, 사용자 프로필 지역 매칭 공고가 상단 정렬
+     * 공고문 목록 조회 (분리된 API)
+     * GET /api/housing/notices?userId={userId}&limit={limit}
      */
     @GetMapping("/notices")
-    public ResponseEntity<ApiResponse<HousingNoticeListResponse>> getHousingNotices(
+    public ResponseEntity<ApiResponse<List<HousingNoticeResponse>>> getHousingNotices(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestParam(required = false) String userIdParam,
-            @RequestParam(required = false) Integer limit,
-            @RequestParam(required = false) String region) {
+            @RequestParam(required = false) Integer limit) {
         
         String finalUserId = userId != null ? userId : userIdParam;
         
@@ -205,20 +199,9 @@ public class HousingController {
                     .body(ApiResponse.error("사용자 ID가 필요합니다."));
         }
 
-        HousingNoticeListResponse response = housingService.getHousingNoticesWithRegion(
-                finalUserId, limit, region);
+        List<HousingNoticeResponse> notices = housingService.getHousingNotices(finalUserId, limit);
         
-        return ResponseEntity.ok(ApiResponse.success("공고문 목록 조회 성공", response));
-    }
-
-    /**
-     * 공고 지역 필터용 광역시도 목록
-     * GET /api/housing/notices/regions
-     */
-    @GetMapping("/notices/regions")
-    public ResponseEntity<ApiResponse<List<String>>> getHousingNoticeRegions() {
-        List<String> regions = housingService.getAvailableHousingRegions();
-        return ResponseEntity.ok(ApiResponse.success("임대주택 공고 지역 목록 조회 성공", regions));
+        return ResponseEntity.ok(ApiResponse.success("공고문 목록 조회 성공", notices));
     }
 }
 

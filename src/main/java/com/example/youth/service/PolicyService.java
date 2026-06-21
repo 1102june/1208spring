@@ -97,21 +97,15 @@ public class PolicyService {
     }
 
     static String buildApplicationStartDisplay(Policy policy) {
-        if (policy == null || policy.getApplicationStart() == null) {
-            return DEFAULT_APPLICATION_PERIOD;
-        }
-        if (!hasCompleteApplicationPeriod(policy)) {
-            return DEFAULT_APPLICATION_PERIOD;
+        if (policy == null || !hasCompleteApplicationPeriod(policy)) {
+            return null;
         }
         return policy.getApplicationStart().toLocalDate().format(DATE_FMT);
     }
 
     static String buildApplicationEndDisplay(Policy policy) {
-        if (policy == null || policy.getApplicationEnd() == null) {
-            return DEFAULT_APPLICATION_PERIOD;
-        }
-        if (!hasCompleteApplicationPeriod(policy)) {
-            return DEFAULT_APPLICATION_PERIOD;
+        if (policy == null || !hasCompleteApplicationPeriod(policy)) {
+            return null;
         }
         return policy.getApplicationEnd().toLocalDate().format(DATE_FMT);
     }

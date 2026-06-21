@@ -102,7 +102,7 @@ public class PolicyScoringService {
         }
 
         if (!hasApplicationLink(policy)) {
-            score -= 10.0;
+            score -= 20.0;
         }
 
         return Math.max(0.0, score);
