@@ -345,6 +345,9 @@ public class UserService {
             userProfileRepository.deleteAll(profiles);
         }
 
+        // Top-K 추천 캐시 삭제
+        userPolicyRecommendationService.deleteForUser(userId);
+
         // 3) User 삭제 (마지막)
         userRepository.delete(user);
     }

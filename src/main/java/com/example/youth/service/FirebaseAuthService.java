@@ -47,4 +47,22 @@ public class FirebaseAuthService {
             throw new RuntimeException("Firebase Token 검증 실패: " + e.getMessage(), e);
         }
     }
+
+    /**
+     * Firebase Auth 계정 삭제 (회원탈퇴 시).
+     * 이미 삭제된 uid면 무시한다.
+     */
+    public void deleteFirebaseUser(String uid) {
+        if (uid == null || uid.isBlank()) {
+            throw new IllegalArgumentException("uid가 필요합니다.");
+        }
+        try {
+            FirebaseAuth.getInstance().deleteUser(uid);
+        } catch (FirebaseAuthException e) {
+            if ("USER_NOT_FOUND".equals(e.getAuthErrorCode().name())) {
+                return;
+            }
+            throw new RuntimeException("Firebase 계정 삭제 실패: " + e.getMessage(), e);
+        }
+    }
 }

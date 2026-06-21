@@ -102,6 +102,14 @@ public class UserPolicyRecommendationService {
     }
 
     /**
+     * 해당 사용자 Top-K 추천 캐시 삭제 (회원탈퇴 시).
+     */
+    @Transactional
+    public void deleteForUser(String userId) {
+        recommendationRepository.deleteByUserId(userId);
+    }
+
+    /**
      * 프로필 저장 후 비동기에 가깝게 단일 사용자만 갱신.
      */
     public void refreshForUserAsync(String userId) {
