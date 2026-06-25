@@ -1,6 +1,8 @@
 package com.example.youth.service;
 
 import com.example.youth.DB.InterestCategory;
+import com.example.youth.DB.LoginType;
+import com.example.youth.DB.OSType;
 import com.example.youth.DB.User;
 import com.example.youth.DB.UserProfile;
 import com.example.youth.dto.ProfileRequest;
@@ -47,7 +49,6 @@ public class UserService {
      */
     @Transactional
     public String registerUser(User user) {
-        // UID로 이미 존재하는지 확인 (이메일 중복 체크는 제거 - Google 로그인 사용자는 같은 이메일로 여러 계정 가능)
         if (userRepository.existsById(user.getUserId())) {
             return "User already exists";
         }
@@ -55,6 +56,43 @@ public class UserService {
         userRepository.save(user);
         userRepository.flush(); // 즉시 DB에 반영
         return "회원가입 성공";
+    }
+
+    /**
+     * Google/Firebase 로그인·프로필 저장 시 DB 사용자 보장.
+     * 탈퇴 후 재가입 시 Firebase UID와 DB user_id를 일치시킨다.
+     */
+    @Transactional
+    public User ensureUserForFirebaseLogin(String uid, String email) {
+        if (uid == null || uid.isBlank()) {
+            throw new IllegalArgumentException("Firebase UID가 필요합니다.");
+        }
+
+        return userRepository.findById(uid).orElseGet(() -> {
+            String safeEmail = email != null ? email : "";
+
+            // 이메일로 남은 stale 레코드(UID 불일치) 제거 — 재가입 시 프로필 저장 실패 방지
+            if (!safeEmail.isBlank()) {
+                userRepository.findByEmail(safeEmail).ifPresent(stale -> {
+                    if (!uid.equals(stale.getUserId())) {
+                        deleteUser(stale.getUserId());
+                    }
+                });
+            }
+
+            User newUser = User.builder()
+                    .userId(uid)
+                    .email(safeEmail)
+                    .emailVerified(true)
+                    .passwordHash("")
+                    .loginType(LoginType.google)
+                    .osType(OSType.android)
+                    .createdAt(java.time.LocalDateTime.now())
+                    .build();
+            userRepository.save(newUser);
+            userRepository.flush();
+            return newUser;
+        });
     }
 
     /**

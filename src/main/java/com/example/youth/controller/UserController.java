@@ -143,47 +143,9 @@ public class UserController {
             // 1) Firebase ID Token 검증
             FirebaseToken decodedToken = firebaseAuthService.verifyToken(profileRequest.getIdToken());
             String uid = decodedToken.getUid();
-            String email = decodedToken.getEmail();
 
-            // 2) 사용자 확인 및 생성/업데이트
-            User user = userService.getUserByUid(uid);
-            
-            if (user == null) {
-                // UID로 사용자를 찾을 수 없으면
-                // 이메일로 기존 사용자 확인
-                User existingUserByEmail = userService.getUserByEmail(email);
-                
-                if (existingUserByEmail != null) {
-                    // 기존 사용자가 있으면 userId를 변경하지 않고 그대로 사용
-                    // (Hibernate는 엔티티의 ID 변경을 허용하지 않음)
-                    // 기존 User의 userId를 사용하여 프로필 저장
-                    user = existingUserByEmail;
-                    // 기타 정보만 업데이트 (userId는 변경하지 않음)
-                    if (!user.isEmailVerified()) {
-                        user.setEmailVerified(true);
-                    }
-                    if (user.getLoginType() != LoginType.google) {
-                        user.setLoginType(LoginType.google);
-                    }
-                    if (user.getOsType() != OSType.android) {
-                        user.setOsType(OSType.android);
-                    }
-                    userService.updateUser(user);
-                } else {
-                    // 완전히 새로운 사용자면 생성
-                    User newUser = User.builder()
-                            .userId(uid)
-                            .email(email != null ? email : "")
-                            .emailVerified(true) // Google 로그인은 이메일 인증 완료
-                            .passwordHash("") // Google 로그인은 비밀번호 없음 (빈 문자열)
-                            .loginType(LoginType.google)
-                            .osType(OSType.android)
-                            .createdAt(java.time.LocalDateTime.now())
-                            .build();
-                    userService.registerUser(newUser);
-                    user = newUser;
-                }
-            }
+            // 2) Firebase UID 기준 DB 사용자 보장 (탈퇴 후 재가입 포함)
+            User user = userService.ensureUserForFirebaseLogin(uid, decodedToken.getEmail());
 
             // 3) 프로필 저장 (기존 프로필이 있으면 업데이트, 없으면 생성)
             ProfileSaveResponse saveResult = userService.saveOrUpdateProfile(user.getUserId(), profileRequest);

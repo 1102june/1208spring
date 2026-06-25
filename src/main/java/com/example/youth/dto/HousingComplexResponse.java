@@ -34,5 +34,15 @@ public class HousingComplexResponse {
     private Double longitude; // 경도
     private Boolean isBookmarked; // 북마크 여부
     private Double distanceFromUser; // 사용자로부터의 거리 (미터 단위)
+
+    /** Android 호환 표시 필드 */
+    private String name;
+    private String organization;
+    private String region;
+    private String address;
+    private String housingType;
+    private String heatingType;
+    private Boolean hasElevator;
+    private String completionDate;
 }
 

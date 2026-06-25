@@ -26,11 +26,7 @@ public class LoginController {
             FirebaseToken decodedToken = firebaseAuthService.verifyToken(loginRequest.getIdToken());
             String uid = decodedToken.getUid();
 
-            User user = userService.getUserByUid(uid);
-            if (user == null) {
-                return ResponseEntity.status(404).body("USER_NOT_FOUND");
-            }
-
+            userService.ensureUserForFirebaseLogin(uid, decodedToken.getEmail());
             return ResponseEntity.ok("LOGIN_SUCCESS");
 
         } catch (Exception e) {

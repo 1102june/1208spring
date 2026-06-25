@@ -443,6 +443,16 @@ public class HousingService {
     /**
      * 단지정보를 HousingComplexResponse로 변환
      */
+    private static String buildComplexRegionLabel(HousingComplex complex) {
+        if (complex.getSignguNm() != null && !complex.getSignguNm().isBlank()) {
+            if (complex.getBrtcNm() != null && !complex.getBrtcNm().isBlank()) {
+                return complex.getBrtcNm() + " " + complex.getSignguNm();
+            }
+            return complex.getSignguNm();
+        }
+        return complex.getBrtcNm() != null ? complex.getBrtcNm() : "";
+    }
+
     private HousingComplexResponse convertComplexToResponse(HousingComplex complex, String userId, Double userLat, Double userLon) {
         boolean isBookmarked = false;
         if (complex.getComplexId() != null && userId != null) {
@@ -476,7 +486,19 @@ public class HousingService {
                 .isBookmarked(isBookmarked);
         
         HousingComplexResponse response = builder.build();
-        
+        response.setName(complex.getHsmpNm());
+        response.setOrganization(complex.getInsttNm());
+        response.setAddress(complex.getRnAdres());
+        response.setRegion(buildComplexRegionLabel(complex));
+        response.setHousingType(complex.getHouseTyNm() != null && !complex.getHouseTyNm().isBlank()
+                ? complex.getHouseTyNm()
+                : complex.getSuplyTyNm());
+        response.setHeatingType(complex.getHeatMthdDetailNm());
+        response.setHasElevator(complex.getElevator());
+        if (complex.getCompleteDate() != null) {
+            response.setCompletionDate(complex.getCompleteDate().toLocalDate().toString());
+        }
+
         // 사용자 위치가 제공된 경우 거리 계산
         if (userLat != null && userLon != null && 
             response.getLatitude() != null && response.getLongitude() != null) {
