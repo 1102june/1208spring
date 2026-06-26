@@ -21,6 +21,9 @@ public class PolicyPreprocessorService {
     @Autowired
     private PolicyScoringService policyScoringService;
 
+    @Autowired
+    private PolicyRegionService policyRegionService;
+
     @Transactional
     public int preprocessAllPolicies() {
         List<Policy> policies = policyRepository.findAll();
@@ -28,6 +31,9 @@ public class PolicyPreprocessorService {
         int count = 0;
         for (Policy policy : policies) {
             policy.setHasApplicationLink(policyScoringService.hasApplicationLink(policy));
+            if (policy.getRegion() == null || policy.getRegion().isBlank()) {
+                policy.setRegion(policyRegionService.inferRegionFromPolicy(policy));
+            }
             policy.setPreprocessedAt(now);
             policyRepository.save(policy);
             count++;
@@ -39,6 +45,9 @@ public class PolicyPreprocessorService {
     @Transactional
     public void preprocessPolicy(Policy policy) {
         policy.setHasApplicationLink(policyScoringService.hasApplicationLink(policy));
+        if (policy.getRegion() == null || policy.getRegion().isBlank()) {
+            policy.setRegion(policyRegionService.inferRegionFromPolicy(policy));
+        }
         policy.setPreprocessedAt(LocalDateTime.now());
         policyRepository.save(policy);
     }

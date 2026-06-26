@@ -28,6 +28,9 @@ public class PolicySyncService {
     private PolicyPreprocessorService policyPreprocessorService;
 
     @Autowired
+    private PolicyRegionService policyRegionService;
+
+    @Autowired
     private UserPolicyRecommendationService userPolicyRecommendationService;
 
     /**
@@ -274,9 +277,13 @@ public class PolicySyncService {
             builder.category(null);
         }
 
-        // Region: 지역 정보는 API 응답에 없을 수 있음 (null 허용)
-        // 등록기관명에서 지역 추출 가능하지만 일단 null
-        builder.region(null);
+        // Region: 기관명·제목에서 지역 파싱
+        String region = policyRegionService.inferRegion(
+                item.getPlcyNm(),
+                item.getSprvsnInstCdNm(),
+                item.getOperInstCdNm(),
+                item.getRgtrInstCdNm());
+        builder.region(region);
 
         // AgeStart, AgeEnd: 지원대상연령
         if (item.getSprtTrgtMinAge() != null && !item.getSprtTrgtMinAge().isEmpty()) {

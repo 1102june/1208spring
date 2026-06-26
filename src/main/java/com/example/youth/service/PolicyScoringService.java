@@ -2,6 +2,7 @@ package com.example.youth.service;
 
 import com.example.youth.DB.Policy;
 import com.example.youth.dto.UserProfileResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +24,9 @@ public class PolicyScoringService {
 
     @Value("${app.policy.show-all:false}")
     private boolean showAllPolicies;
+
+    @Autowired
+    private PolicyRegionService policyRegionService;
 
     public static final int DEFAULT_TOP_K = 35;
 
@@ -70,12 +74,12 @@ public class PolicyScoringService {
 
         String policyRegion = policy.getRegion();
         if (userRegion != null && policyRegion != null) {
-            if (policyRegion.contains(userRegion) || userRegion.contains(policyRegion)) {
+            if (policyRegionService.regionsAlign(userRegion, policyRegion)) {
                 score += 20.0;
-            } else if (isNationwideRegion(policyRegion)) {
+            } else if (policyRegionService.isNationwideRegion(policyRegion)) {
                 score += 10.0;
             }
-        } else if (policyRegion != null && isNationwideRegion(policyRegion)) {
+        } else if (policyRegion != null && policyRegionService.isNationwideRegion(policyRegion)) {
             score += 10.0;
         }
 
@@ -104,6 +108,8 @@ public class PolicyScoringService {
         if (!hasApplicationLink(policy)) {
             score -= 20.0;
         }
+
+        score -= policyRegionService.computeForeignRegionPenalty(userRegion, policy);
 
         return Math.max(0.0, score);
     }
@@ -184,10 +190,6 @@ public class PolicyScoringService {
             }
         }
         return false;
-    }
-
-    private boolean isNationwideRegion(String region) {
-        return "전국".equals(region) || "전체".equals(region);
     }
 
     public record ScoredPolicy(Policy policy, double score) {}
