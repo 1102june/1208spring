@@ -18,17 +18,51 @@ import java.util.stream.Collectors;
 /**
  * 정책 추천 가중치 공식 (코드 단일 소스).
  * DB에는 Top-K 결과만 저장하고, 점수 계산은 항상 이 서비스를 사용한다.
+ *
+ * @see PolicyRegionService 지역 매칭·감점
  */
 @Service
 public class PolicyScoringService {
+
+    /** 기본 점수 */
+    public static final double BASE_SCORE = 10.0;
+
+    /** 연령 완전 일치 (ageStart~ageEnd 안) */
+    public static final double AGE_MATCH_BONUS = 30.0;
+    /** 연령 범위 밖 */
+    public static final double AGE_MISMATCH_PENALTY = 5.0;
+    /** 연령 범위 미기재 시 (사용자 나이만 있을 때) */
+    public static final double AGE_UNKNOWN_BONUS = 15.0;
+
+    /** policy.region 필드가 사용자 지역과 일치 */
+    public static final double POLICY_REGION_MATCH_BONUS = 20.0;
+    /** policy.region = 전국/전체 */
+    public static final double NATIONWIDE_REGION_BONUS = 10.0;
+
+    /** title에 사용자 지역 키워드 포함 */
+    public static final double TITLE_REGION_MATCH_BONUS = 40.0;
+    /** summary에 사용자 지역 키워드 포함 */
+    public static final double SUMMARY_REGION_MATCH_BONUS = 40.0;
+
+    /** eligibility에 사용자 지역명 포함 */
+    public static final double ELIGIBILITY_REGION_MATCH_BONUS = 10.0;
+
+    /** 관심 카테고리 일치 */
+    public static final double INTEREST_CATEGORY_BONUS = 20.0;
+
+    /** 마감 임박 보너스 최대 (0~10일) */
+    public static final double DEADLINE_BONUS_MAX = 10.0;
+
+    /** 신청 링크(link1·link2) 없음 */
+    public static final double NO_APPLICATION_LINK_PENALTY = 20.0;
+
+    public static final int DEFAULT_TOP_K = 35;
 
     @Value("${app.policy.show-all:false}")
     private boolean showAllPolicies;
 
     @Autowired
     private PolicyRegionService policyRegionService;
-
-    public static final int DEFAULT_TOP_K = 35;
 
     /**
      * 활성(마감 전) 정책만 필터링.
@@ -51,7 +85,7 @@ public class PolicyScoringService {
      * 사용자 프로필 × 정책 속성으로 점수 계산.
      */
     public double scorePolicy(Policy policy, UserProfileResponse profile, LocalDate today) {
-        double score = 10.0;
+        double score = BASE_SCORE;
 
         Integer age = profile != null ? profile.getAge() : null;
         String userRegion = profile != null ? profile.getRegion() : null;
@@ -64,51 +98,54 @@ public class PolicyScoringService {
         Integer ageEnd = policy.getAgeEnd();
         if (age != null && ageStart != null && ageEnd != null) {
             if (age >= ageStart && age <= ageEnd) {
-                score += 30.0;
+                score += AGE_MATCH_BONUS;
             } else {
-                score -= 5.0;
+                score -= AGE_MISMATCH_PENALTY;
             }
         } else if (age != null) {
-            score += 15.0;
+            score += AGE_UNKNOWN_BONUS;
         }
 
         String policyRegion = policy.getRegion();
         if (userRegion != null && policyRegion != null) {
             if (policyRegionService.regionsAlign(userRegion, policyRegion)) {
-                score += 20.0;
+                score += POLICY_REGION_MATCH_BONUS;
             } else if (policyRegionService.isNationwideRegion(policyRegion)) {
-                score += 10.0;
+                score += NATIONWIDE_REGION_BONUS;
             }
         } else if (policyRegion != null && policyRegionService.isNationwideRegion(policyRegion)) {
-            score += 10.0;
+            score += NATIONWIDE_REGION_BONUS;
         }
 
         if (!regionKeywords.isEmpty()) {
             if (containsAnyRegionKeyword(policy.getTitle(), regionKeywords)) {
-                score += 40.0;
+                score += TITLE_REGION_MATCH_BONUS;
             }
             if (containsAnyRegionKeyword(policy.getSummary(), regionKeywords)) {
-                score += 40.0;
+                score += SUMMARY_REGION_MATCH_BONUS;
             }
         }
 
+        score += policyRegionService.computeEligibilityRegionMatchBonus(userRegion, policy);
+
         String policyCategory = policy.getCategory();
         if (!interests.isEmpty() && policyCategory != null && interests.contains(policyCategory)) {
-            score += 20.0;
+            score += INTEREST_CATEGORY_BONUS;
         }
 
         if (policy.getApplicationEnd() != null) {
             LocalDate endDate = policy.getApplicationEnd().toLocalDate();
             long daysUntilEnd = ChronoUnit.DAYS.between(today, endDate);
             if (daysUntilEnd >= 0) {
-                score += Math.max(0.0, 10.0 - Math.min(daysUntilEnd, 10));
+                score += Math.max(0.0, DEADLINE_BONUS_MAX - Math.min(daysUntilEnd, (long) DEADLINE_BONUS_MAX));
             }
         }
 
         if (!hasApplicationLink(policy)) {
-            score -= 20.0;
+            score -= NO_APPLICATION_LINK_PENALTY;
         }
 
+        score -= policyRegionService.computeEligibilityForeignPenalty(userRegion, policy);
         score -= policyRegionService.computeForeignRegionPenalty(userRegion, policy);
 
         return Math.max(0.0, score);

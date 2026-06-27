@@ -20,7 +20,11 @@ public class PolicyRegionService {
 
     private static final double TITLE_FOREIGN_PENALTY = 50.0;
     private static final double SUMMARY_FOREIGN_PENALTY = 40.0;
-    private static final double MAX_FOREIGN_PENALTY = 60.0;
+    /** eligibility(지원자격)에 사용자 지역명 포함 — {@link PolicyScoringService#ELIGIBILITY_REGION_MATCH_BONUS} */
+    public static final double ELIGIBILITY_REGION_MATCH_BONUS = 10.0;
+    /** eligibility(지원자격)에 타 지역명 — {@link PolicyScoringService}에서 별도 차감 */
+    public static final double ELIGIBILITY_FOREIGN_PENALTY = 30.0;
+    private static final double MAX_FOREIGN_PENALTY = 90.0;
 
     private static final List<String> NATIONWIDE_MARKERS = List.of(
             "전국", "전체", "국가", "중앙부처", "중앙정부", "고용노동부", "보건복지부",
@@ -94,7 +98,8 @@ public class PolicyRegionService {
         if (policy == null) {
             return false;
         }
-        String combined = joinNonBlank(policy.getTitle(), policy.getSummary(), policy.getRegion());
+        String combined = joinNonBlank(
+                policy.getTitle(), policy.getSummary(), policy.getRegion(), policy.getEligibility());
         if (combined.isEmpty()) {
             return false;
         }
@@ -106,7 +111,48 @@ public class PolicyRegionService {
     }
 
     /**
-     * 사용자 지역과 다른 지역명이 title/summary/region에 있으면 감점 (최대 60).
+     * eligibility에 사용자 지역명이 있을 때만 +10.
+     */
+    public double computeEligibilityRegionMatchBonus(String userRegion, Policy policy) {
+        if (userRegion == null || userRegion.isBlank() || policy == null) {
+            return 0.0;
+        }
+        String eligibility = policy.getEligibility();
+        if (eligibility == null || eligibility.isBlank()) {
+            return 0.0;
+        }
+        List<String> userKeywords = extractUserRegionKeywords(userRegion);
+        if (userKeywords.isEmpty()) {
+            return 0.0;
+        }
+        if (matchesUserRegion(userKeywords, eligibility) || containsAnyKeyword(eligibility, userKeywords)) {
+            return ELIGIBILITY_REGION_MATCH_BONUS;
+        }
+        return 0.0;
+    }
+
+    /**
+     * eligibility에 타 지역명이 있으면 -30.
+     */
+    public double computeEligibilityForeignPenalty(String userRegion, Policy policy) {
+        if (userRegion == null || userRegion.isBlank() || policy == null) {
+            return 0.0;
+        }
+        if (isNationwideOnlyPolicy(policy)) {
+            return 0.0;
+        }
+        List<String> userKeywords = extractUserRegionKeywords(userRegion);
+        if (userKeywords.isEmpty()) {
+            return 0.0;
+        }
+        if (hasForeignLocalRegion(policy.getEligibility(), userKeywords)) {
+            return ELIGIBILITY_FOREIGN_PENALTY;
+        }
+        return 0.0;
+    }
+
+    /**
+     * title/summary/region/eligibility·title에 타 지역명 → 감점 (최대 90).
      */
     public double computeForeignRegionPenalty(String userRegion, Policy policy) {
         if (userRegion == null || userRegion.isBlank() || policy == null) {
