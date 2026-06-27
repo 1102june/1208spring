@@ -14,6 +14,21 @@ public class PolicySyncController {
     private PolicySyncService policySyncService;
 
     /**
+     * region backfill (기존 DB에 sync 없이 region 채우기)
+     */
+    @PostMapping("/backfill-regions")
+    public ResponseEntity<ApiResponse<Integer>> backfillPolicyRegions() {
+        try {
+            int updatedCount = policySyncService.backfillPolicyRegions();
+            return ResponseEntity.ok(ApiResponse.success(
+                    "policy.region backfill 완료: " + updatedCount + "건 갱신", updatedCount));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("region backfill 중 오류: " + e.getMessage()));
+        }
+    }
+
+    /**
      * 청년정책 데이터 동기화 (수동 실행)
      */
     @PostMapping("/sync")

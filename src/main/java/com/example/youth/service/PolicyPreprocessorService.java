@@ -25,6 +25,27 @@ public class PolicyPreprocessorService {
     private PolicyRegionService policyRegionService;
 
     @Transactional
+    public int backfillAllPolicyRegions() {
+        List<Policy> policies = policyRepository.findAll();
+        int filled = 0;
+        int updated = 0;
+        for (Policy policy : policies) {
+            String inferred = policyRegionService.inferRegionFromPolicy(policy);
+            if (inferred != null && !inferred.isBlank()) {
+                filled++;
+                if (!inferred.equals(policy.getRegion())) {
+                    policy.setRegion(inferred);
+                    updated++;
+                    policyRepository.save(policy);
+                }
+            }
+        }
+        System.out.println("PolicyPreprocessorService: region backfill 완료 — 추론 " + filled
+                + "건 / DB 갱신 " + updated + "건 (전체 " + policies.size() + "건)");
+        return updated;
+    }
+
+    @Transactional
     public int preprocessAllPolicies() {
         List<Policy> policies = policyRepository.findAll();
         LocalDateTime now = LocalDateTime.now();

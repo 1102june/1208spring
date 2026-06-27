@@ -50,6 +50,9 @@ public class PolicyRegionService {
 
     private static final Pattern PAREN_DISTRICT = Pattern.compile("\\(([가-힣]+구)\\)");
 
+    private static final Pattern SHORT_METRO_WITH_DISTRICT = Pattern.compile(
+            "(서울|부산|대구|인천|광주|대전|울산|세종)\\s+([가-힣]+(?:구|군))");
+
     /**
      * sync 시 policy.region 저장용 — 기관명 우선, 없으면 제목.
      */
@@ -64,17 +67,19 @@ public class PolicyRegionService {
     }
 
     /**
-     * 기존 DB 정책 backfill (제목·요약만 사용).
+     * 기존 DB 정책 backfill (제목·요약·eligibility).
      */
     public String inferRegionFromPolicy(Policy policy) {
         if (policy == null) {
             return null;
         }
-        String fromTitle = inferRegion(policy.getTitle(), null, null, null);
-        if (fromTitle != null) {
-            return fromTitle;
+        for (String source : List.of(policy.getTitle(), policy.getSummary(), policy.getEligibility())) {
+            String parsed = parseRegionFromText(source);
+            if (parsed != null && !parsed.isBlank()) {
+                return trimRegion(parsed);
+            }
         }
-        return parseRegionFromText(policy.getSummary());
+        return null;
     }
 
     public boolean isNationwideRegion(String region) {
@@ -242,19 +247,26 @@ public class PolicyRegionService {
             return trimRegion(metro.group(1) + " " + metro.group(2));
         }
 
+        Matcher shortMetro = SHORT_METRO_WITH_DISTRICT.matcher(text);
+        if (shortMetro.find()) {
+            return trimRegion(toMetroFullName(shortMetro.group(1)) + " " + shortMetro.group(2));
+        }
+
         for (String term : LOCAL_REGION_TERMS) {
-            if (text.contains(term)) {
-                if (term.endsWith("시") && !term.contains("광역") && !term.contains("특별")) {
-                    return term;
-                }
-                if (term.contains("특별") || term.contains("광역") || term.endsWith("도")) {
-                    Matcher m = METRO_WITH_DISTRICT.matcher(text);
-                    if (m.find()) {
-                        return trimRegion(m.group(1) + " " + m.group(2));
-                    }
-                    return term;
-                }
+            if (!text.contains(term)) {
+                continue;
             }
+            if (term.endsWith("시") && !term.contains("광역") && !term.contains("특별")) {
+                return term;
+            }
+            if (term.contains("특별") || term.contains("광역") || term.endsWith("도")) {
+                Matcher m = METRO_WITH_DISTRICT.matcher(text);
+                if (m.find()) {
+                    return trimRegion(m.group(1) + " " + m.group(2));
+                }
+                return term;
+            }
+            return canonicalRegionLabel(term);
         }
 
         Matcher city = STANDALONE_CITY.matcher(text);
@@ -322,6 +334,39 @@ public class PolicyRegionService {
         if (t.startsWith("경북") || t.contains("경상북")) return "경북";
         if (t.startsWith("경남") || t.contains("경상남")) return "경남";
         return normalizeToken(token);
+    }
+
+    private String canonicalRegionLabel(String term) {
+        if (term == null || term.isBlank()) {
+            return null;
+        }
+        return switch (term) {
+            case "서울" -> "서울특별시";
+            case "부산" -> "부산광역시";
+            case "대구" -> "대구광역시";
+            case "인천" -> "인천광역시";
+            case "광주" -> "광주광역시";
+            case "대전" -> "대전광역시";
+            case "울산" -> "울산광역시";
+            case "세종" -> "세종특별자치시";
+            case "제주" -> "제주특별자치도";
+            case "경기" -> "경기도";
+            case "강원" -> "강원특별자치도";
+            case "충북" -> "충청북도";
+            case "충남" -> "충청남도";
+            case "전북" -> "전북특별자치도";
+            case "전남" -> "전라남도";
+            case "경북" -> "경상북도";
+            case "경남" -> "경상남도";
+            case "익산", "전주", "군산", "김제", "남원", "정읍" -> term + "시";
+            case "수원", "성남", "고양", "용인", "부천", "안산", "안양", "남양주",
+                 "청주", "충주", "천안", "창원", "김해", "포항", "서귀포" -> term + "시";
+            default -> term.endsWith("시") || term.endsWith("도") ? term : term;
+        };
+    }
+
+    private String toMetroFullName(String shortName) {
+        return canonicalRegionLabel(shortName);
     }
 
     private String normalizeToken(String token) {

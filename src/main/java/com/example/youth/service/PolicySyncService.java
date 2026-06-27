@@ -233,6 +233,13 @@ public class PolicySyncService {
     }
 
     /**
+     * sync 없이 DB policy.region만 제목·요약 등에서 backfill.
+     */
+    public int backfillPolicyRegions() {
+        return policyPreprocessorService.backfillAllPolicyRegions();
+    }
+
+    /**
      * sync 직후: 정책 전처리 → 전 사용자 Top-K 배치 재계산.
      */
     public void runPostSyncPipeline() {
