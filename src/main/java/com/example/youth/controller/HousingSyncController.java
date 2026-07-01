@@ -7,6 +7,7 @@ import com.example.youth.repository.HousingRepository;
 import com.example.youth.repository.HousingNoticeRepository;
 import com.example.youth.repository.HousingComplexRepository;
 import com.example.youth.service.HousingSyncService;
+import com.example.youth.service.HousingGeocodeService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -30,6 +31,9 @@ public class HousingSyncController {
     
     @Autowired
     private HousingComplexRepository housingComplexRepository;
+
+    @Autowired
+    private HousingGeocodeService housingGeocodeService;
 
     /**
      * 임대주택 데이터 동기화 (수동 실행)
@@ -102,6 +106,39 @@ public class HousingSyncController {
                     .body(ApiResponse.error("매칭 및 저장 중 오류 발생: " + e.getMessage()));
         }
     }
+
+    /**
+     * housing_complex 좌표 배치 지오코딩 (Kakao Local API).
+     *
+     * POST /api/admin/housing/geocode?limit=100&onlyMissing=true&async=true
+     */
+    @PostMapping("/geocode")
+    public ResponseEntity<ApiResponse<Object>> geocodeComplexes(
+            @RequestParam(required = false, defaultValue = "100") int limit,
+            @RequestParam(required = false, defaultValue = "true") boolean onlyMissing,
+            @RequestParam(required = false, defaultValue = "true") boolean async) {
+        try {
+            if (async) {
+                new Thread(() -> {
+                    try {
+                        housingGeocodeService.batchGeocode(limit, onlyMissing);
+                    } catch (Exception e) {
+                        System.err.println("단지 지오코딩 백그라운드 작업 실패: " + e.getMessage());
+                        e.printStackTrace();
+                    }
+                }, "housing-geocode").start();
+                return ResponseEntity.ok(ApiResponse.success(
+                        "단지 지오코딩을 백그라운드로 시작했습니다. (limit=" + limit
+                                + ", onlyMissing=" + onlyMissing + ")"));
+            }
+            Map<String, Object> result = housingGeocodeService.batchGeocode(limit, onlyMissing);
+            return ResponseEntity.ok(ApiResponse.success("단지 지오코딩 완료", result));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("단지 지오코딩 중 오류 발생: " + e.getMessage()));
+        }
+    }
     
     /**
      * housing 테이블의 모든 데이터 삭제
@@ -170,8 +207,13 @@ public class HousingSyncController {
                 long complexWithAddress = housingComplexRepository.findAll().stream()
                         .filter(c -> c.getRnAdres() != null && !c.getRnAdres().isEmpty())
                         .count();
+                long complexWithCoordinates = housingComplexRepository.countWithCoordinates();
+                long complexNeedingGeocode = housingComplexRepository.countNeedingGeocode();
                 stats.put("complexWithAddress", complexWithAddress);
                 stats.put("complexAddressRate", String.format("%.2f%%", (complexWithAddress * 100.0 / complexCount)));
+                stats.put("complexWithCoordinates", complexWithCoordinates);
+                stats.put("complexCoordinateRate", String.format("%.2f%%", (complexWithCoordinates * 100.0 / complexCount)));
+                stats.put("complexNeedingGeocode", complexNeedingGeocode);
             }
             
             if (noticeCount > 0) {

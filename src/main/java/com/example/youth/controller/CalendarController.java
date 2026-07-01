@@ -32,10 +32,15 @@ public class CalendarController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<CalendarEventResponse>>> getEvents(
             @RequestHeader("X-User-Id") String userId,
-            @RequestParam int year,
-            @RequestParam int month) {
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Integer month) {
         try {
-            List<CalendarEventResponse> responses = calendarService.getEvents(userId, year, month);
+            List<CalendarEventResponse> responses;
+            if (year != null && month != null) {
+                responses = calendarService.getEvents(userId, year, month);
+            } else {
+                responses = calendarService.getAllActiveEvents(userId);
+            }
             return ResponseEntity.ok(ApiResponse.success("일정 목록 조회 성공", responses));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(ApiResponse.error(e.getMessage()));

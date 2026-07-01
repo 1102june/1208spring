@@ -32,18 +32,95 @@ public class PolicyRegionService {
             "문화체육관광부", "농림축산식품부", "교육부", "행정안전부", "국무조정실"
     );
 
-    /** 긴 패턴 우선 (contains 검색) */
-    private static final List<String> LOCAL_REGION_TERMS = List.of(
+    private static final List<String> LOCAL_REGION_TERMS = buildLocalRegionTerms();
+
+    /** 도(광역시) 키 → 소속 시·군 이름 (시 접미사 제외, 긴 이름 우선 검색용) */
+    private static final java.util.Map<String, List<String>> PROVINCE_CITY_ROOTS = java.util.Map.ofEntries(
+            java.util.Map.entry("서울", List.of("서울")),
+            java.util.Map.entry("부산", List.of("부산")),
+            java.util.Map.entry("인천", List.of("인천")),
+            java.util.Map.entry("대구", List.of("대구")),
+            java.util.Map.entry("광주", List.of("광주")),
+            java.util.Map.entry("대전", List.of("대전")),
+            java.util.Map.entry("울산", List.of("울산")),
+            java.util.Map.entry("세종", List.of("세종")),
+            java.util.Map.entry("제주", List.of("제주", "서귀포")),
+            java.util.Map.entry("경기", List.of(
+                    "고양", "과천", "광명", "광주", "구리", "군포", "김포", "남양주", "동두천", "부천",
+                    "성남", "수원", "시흥", "안산", "안성", "안양", "양주", "여주", "오산", "용인",
+                    "의왕", "의정부", "이천", "파주", "평택", "포천", "하남", "화성")),
+            java.util.Map.entry("강원", List.of("강릉", "동해", "삼척", "속초", "원주", "춘천", "태백")),
+            java.util.Map.entry("충북", List.of("제천", "청주", "충주")),
+            java.util.Map.entry("충남", List.of("계룡", "공주", "논산", "당진", "보령", "서산", "아산", "천안")),
+            java.util.Map.entry("전북", List.of("군산", "김제", "남원", "익산", "전주", "정읍")),
+            java.util.Map.entry("전남", List.of("광양", "나주", "목포", "순천", "여수")),
+            java.util.Map.entry("경북", List.of("경산", "경주", "구미", "김천", "문경", "상주", "안동", "영주", "영천", "포항")),
+            java.util.Map.entry("경남", List.of("거제", "김해", "밀양", "사천", "양산", "진주", "창원", "통영"))
+    );
+
+    private static final java.util.Map<String, String> PROVINCE_DISPLAY = java.util.Map.ofEntries(
+            java.util.Map.entry("서울", "서울특별시"),
+            java.util.Map.entry("부산", "부산광역시"),
+            java.util.Map.entry("경기", "경기도"),
+            java.util.Map.entry("인천", "인천광역시"),
+            java.util.Map.entry("대구", "대구광역시"),
+            java.util.Map.entry("광주", "광주광역시"),
+            java.util.Map.entry("대전", "대전광역시"),
+            java.util.Map.entry("울산", "울산광역시"),
+            java.util.Map.entry("강원", "강원특별자치도"),
+            java.util.Map.entry("충북", "충청북도"),
+            java.util.Map.entry("충남", "충청남도"),
+            java.util.Map.entry("전북", "전북특별자치도"),
+            java.util.Map.entry("전남", "전라남도"),
+            java.util.Map.entry("경북", "경상북도"),
+            java.util.Map.entry("경남", "경상남도"),
+            java.util.Map.entry("제주", "제주특별자치도"),
+            java.util.Map.entry("세종", "세종특별자치시")
+    );
+
+    private static final java.util.Map<String, String> CITY_ROOT_TO_PROVINCE = buildCityRootToProvince();
+
+    private static final java.util.Map<String, String> DISTRICT_TO_PROVINCE = KoreaDistrictData.buildDistrictToProvince();
+
+    private static List<String> buildLocalRegionTerms() {
+        List<String> terms = new ArrayList<>(List.of(
             "서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시",
             "세종특별자치시", "제주특별자치도", "전북특별자치도", "강원특별자치도",
             "경기도", "강원도", "충청북도", "충청남도", "전라북도", "전라남도", "경상북도", "경상남도",
             "충북", "충남", "전북", "전남", "경북", "경남",
-            "익산시", "전주시", "군산시", "김제시", "남원시", "정읍시",
-            "수원시", "성남시", "고양시", "용인시", "부천시", "안산시", "안양시", "남양주시",
-            "청주시", "충주시", "천안시", "전주", "익산", "군산",
-            "창원시", "김해시", "포항시", "제주시", "서귀포시",
             "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "제주", "경기", "강원"
-    );
+        ));
+        for (List<String> cities : PROVINCE_CITY_ROOTS.values()) {
+            for (String city : cities) {
+                terms.add(city);
+                terms.add(city + "시");
+            }
+        }
+        for (List<String> districts : KoreaDistrictData.provinceDistricts().values()) {
+            terms.addAll(districts);
+            for (String district : districts) {
+                String root = KoreaDistrictData.districtRoot(district);
+                if (root != null && root.length() >= 2) {
+                    terms.add(root);
+                }
+            }
+        }
+        return terms;
+    }
+
+    private static java.util.Map<String, String> buildCityRootToProvince() {
+        java.util.Map<String, String> map = new java.util.HashMap<>();
+        PROVINCE_CITY_ROOTS.forEach((province, cities) -> {
+            for (String city : cities) {
+                if (PROVINCE_CITY_ROOTS.containsKey(city)) {
+                    map.put(city + "시", province);
+                } else {
+                    map.put(city, province);
+                }
+            }
+        });
+        return java.util.Collections.unmodifiableMap(map);
+    }
 
     private static final Pattern METRO_WITH_DISTRICT = Pattern.compile(
             "(서울특별시|부산광역시|대구광역시|인천광역시|광주광역시|대전광역시|울산광역시|세종특별자치시|제주특별자치도|"
@@ -208,10 +285,34 @@ public class PolicyRegionService {
             return List.of();
         }
         Set<String> keywords = new LinkedHashSet<>();
+        String provinceKey = resolveProvinceKey(userRegion);
+
+        if (provinceKey != null) {
+            keywords.add(provinceKey);
+            String display = PROVINCE_DISPLAY.get(provinceKey);
+            if (display != null) {
+                keywords.add(display);
+                String normalizedDisplay = normalizeToken(display);
+                if (normalizedDisplay != null) {
+                    keywords.add(normalizedDisplay);
+                }
+            }
+            List<String> cities = PROVINCE_CITY_ROOTS.get(provinceKey);
+            if (cities != null) {
+                for (String city : cities) {
+                    addCityKeywords(keywords, city);
+                }
+            }
+            addProvinceDistrictKeywords(keywords, provinceKey);
+        }
+
         for (String part : userRegion.trim().split("\\s+")) {
             String normalized = normalizeToken(part);
             if (normalized != null && normalized.length() >= 2) {
                 keywords.add(normalized);
+            }
+            if (part.length() >= 2) {
+                keywords.add(part.trim());
             }
         }
         for (String term : findLocalRegionTerms(userRegion)) {
@@ -221,6 +322,62 @@ public class PolicyRegionService {
             }
         }
         return new ArrayList<>(keywords);
+    }
+
+    /**
+     * 사용자 region 문자열에서 도(광역시) 키 추출. 예: "전남 전라남도" → "전남"
+     */
+    public String resolveProvinceKey(String userRegion) {
+        if (userRegion == null || userRegion.isBlank()) {
+            return null;
+        }
+        String trimmed = userRegion.trim();
+        for (String key : PROVINCE_CITY_ROOTS.keySet()) {
+            if (trimmed.equals(key) || trimmed.startsWith(key + " ")) {
+                return key;
+            }
+        }
+        for (var entry : PROVINCE_DISPLAY.entrySet()) {
+            if (trimmed.equals(entry.getValue()) || trimmed.startsWith(entry.getValue())) {
+                return entry.getKey();
+            }
+        }
+        String first = trimmed.split("\\s+")[0];
+        String normalized = normalizeToken(first);
+        if (normalized != null) {
+            for (var entry : PROVINCE_DISPLAY.entrySet()) {
+                if (entry.getKey().equals(normalized) || entry.getValue().contains(normalized)) {
+                    return entry.getKey();
+                }
+            }
+        }
+        return null;
+    }
+
+    private void addCityKeywords(Set<String> keywords, String cityRoot) {
+        if (cityRoot == null || cityRoot.isBlank()) {
+            return;
+        }
+        keywords.add(cityRoot);
+        keywords.add(cityRoot + "시");
+    }
+
+    private void addProvinceDistrictKeywords(Set<String> keywords, String provinceKey) {
+        String display = PROVINCE_DISPLAY.get(provinceKey);
+        for (String district : KoreaDistrictData.districtsForProvince(provinceKey)) {
+            String root = KoreaDistrictData.districtRoot(district);
+            boolean ambiguous = root != null && KoreaDistrictData.AMBIGUOUS_DISTRICT_ROOTS.contains(root);
+            if (!ambiguous) {
+                keywords.add(district);
+                if (root != null) {
+                    keywords.add(root);
+                }
+            }
+            if (display != null) {
+                keywords.add(display + " " + district);
+            }
+            keywords.add(provinceKey + " " + district);
+        }
     }
 
     public boolean regionsAlign(String userRegion, String policyRegion) {
@@ -238,18 +395,6 @@ public class PolicyRegionService {
                 || policyRegion.contains(userRegion);
     }
 
-    private boolean hasForeignLocalRegion(String text, List<String> userKeywords) {
-        if (text == null || text.isBlank()) {
-            return false;
-        }
-        for (String term : findLocalRegionTerms(text)) {
-            if (!termMatchesUserKeywords(term, userKeywords)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private List<String> findLocalRegionTerms(String text) {
         if (text == null || text.isBlank()) {
             return List.of();
@@ -263,6 +408,10 @@ public class PolicyRegionService {
             }
         }
 
+        found.addAll(findCityRootsInText(normalized));
+
+        found.addAll(findDistrictsInText(normalized));
+
         Matcher metro = METRO_WITH_DISTRICT.matcher(text);
         while (metro.find()) {
             found.add(trimRegion(metro.group(1) + " " + metro.group(2)));
@@ -275,12 +424,93 @@ public class PolicyRegionService {
 
         Matcher paren = PAREN_DISTRICT.matcher(text);
         while (paren.find()) {
-            found.add(paren.group(1));
+            String district = paren.group(1);
+            String metroPrefix = findMetroPrefixInText(text);
+            if (metroPrefix != null) {
+                found.add(trimRegion(metroPrefix + " " + district));
+            }
         }
 
         return found.stream()
                 .sorted(Comparator.comparingInt(String::length).reversed())
                 .toList();
+    }
+
+    /** 정책 텍스트에서 등록된 시·군 이름 탐지 (평택청년 → 평택) */
+    private List<String> findCityRootsInText(String normalizedText) {
+        List<String> found = new ArrayList<>();
+        List<String> allRoots = new ArrayList<>();
+        for (List<String> cities : PROVINCE_CITY_ROOTS.values()) {
+            allRoots.addAll(cities);
+        }
+        allRoots.sort(Comparator.comparingInt(String::length).reversed());
+        for (String cityRoot : allRoots) {
+            if (containsCityRoot(normalizedText, cityRoot)) {
+                found.add(cityRoot);
+                found.add(cityRoot + "시");
+            }
+        }
+        return found;
+    }
+
+    /** 정책 텍스트에서 등록된 구·군 이름 탐지 */
+    private List<String> findDistrictsInText(String normalizedText) {
+        List<String> found = new ArrayList<>();
+        for (List<String> districts : KoreaDistrictData.provinceDistricts().values()) {
+            for (String district : districts) {
+                if (normalizedText.contains(district)) {
+                    found.add(district);
+                    String root = KoreaDistrictData.districtRoot(district);
+                    if (root != null && root.length() >= 2) {
+                        found.add(root);
+                    }
+                }
+            }
+        }
+        return found;
+    }
+
+    private boolean containsDistrictInText(String normalizedText, String district) {
+        return district != null && normalizedText.contains(district);
+    }
+
+    private boolean textMentionsProvince(String text, String provinceKey) {
+        if (text == null || provinceKey == null) {
+            return false;
+        }
+        String display = PROVINCE_DISPLAY.get(provinceKey);
+        if (text.contains(provinceKey)) {
+            return true;
+        }
+        return display != null && text.contains(display);
+    }
+
+    private boolean containsCityRoot(String normalizedText, String cityRoot) {
+        if (normalizedText == null || cityRoot == null || cityRoot.isBlank()) {
+            return false;
+        }
+        int idx = 0;
+        while ((idx = normalizedText.indexOf(cityRoot, idx)) >= 0) {
+            int end = idx + cityRoot.length();
+            if (end >= normalizedText.length()) {
+                return true;
+            }
+            char next = normalizedText.charAt(end);
+            if (next == '시' || next == '군' || next == '구' || next == '청' || next == ' ') {
+                return true;
+            }
+            idx = end;
+        }
+        return false;
+    }
+
+    private String findMetroPrefixInText(String text) {
+        for (String metro : List.of("서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "제주")) {
+            if (text.contains(metro)) {
+                return toMetroFullName(metro);
+            }
+        }
+        return null;
     }
 
     private String parseRegionFromText(String text) {
@@ -348,6 +578,85 @@ public class PolicyRegionService {
             }
             if (sameRegionGroup(normalizedTerm, uk)) {
                 return true;
+            }
+        }
+        String termProvince = CITY_ROOT_TO_PROVINCE.get(normalizedTerm);
+        if (termProvince != null) {
+            for (String uk : userKeywords) {
+                if (termProvince.equals(uk) || termProvince.equals(resolveProvinceKey(uk))) {
+                    return true;
+                }
+            }
+        }
+        String districtProvince = DISTRICT_TO_PROVINCE.get(normalizedTerm);
+        if (districtProvince == null && term != null) {
+            districtProvince = DISTRICT_TO_PROVINCE.get(term.trim());
+        }
+        if (districtProvince != null) {
+            for (String uk : userKeywords) {
+                if (districtProvince.equals(uk) || districtProvince.equals(resolveProvinceKey(uk))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean hasForeignLocalRegion(String text, List<String> userKeywords) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String userProvince = userKeywords.stream()
+                .map(this::resolveProvinceKey)
+                .filter(k -> k != null)
+                .findFirst()
+                .orElse(null);
+        if (userProvince == null && !userKeywords.isEmpty()) {
+            userProvince = userKeywords.get(0);
+        }
+
+        String normalized = text.replace(" ", "");
+        for (List<String> cities : PROVINCE_CITY_ROOTS.values()) {
+            for (String cityRoot : cities) {
+                if (!containsCityRoot(normalized, cityRoot)) {
+                    continue;
+                }
+                String cityProvince = CITY_ROOT_TO_PROVINCE.get(cityRoot);
+                if (userProvince != null && userProvince.equals(cityProvince)) {
+                    continue;
+                }
+                if (userProvince != null && cityProvince != null && !userProvince.equals(cityProvince)) {
+                    return true;
+                }
+            }
+        }
+
+        for (var entry : KoreaDistrictData.provinceDistricts().entrySet()) {
+            String districtProvince = entry.getKey();
+            for (String district : entry.getValue()) {
+                if (!containsDistrictInText(normalized, district)) {
+                    continue;
+                }
+                String root = KoreaDistrictData.districtRoot(district);
+                if (userProvince != null && userProvince.equals(districtProvince)) {
+                    continue;
+                }
+                if (root != null && KoreaDistrictData.AMBIGUOUS_DISTRICT_ROOTS.contains(root)
+                        && !textMentionsProvince(text, districtProvince)) {
+                    continue;
+                }
+                if (userProvince != null && !userProvince.equals(districtProvince)) {
+                    return true;
+                }
+            }
+        }
+
+        for (String term : findLocalRegionTerms(text)) {
+            if (!termMatchesUserKeywords(term, userKeywords)) {
+                String root = normalizeToken(term);
+                if (root != null && root.length() >= 2) {
+                    return true;
+                }
             }
         }
         return false;

@@ -30,7 +30,7 @@ public class CalendarService {
         User user = userRepository.findByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다: " + userId));
 
-        ContentType eventType = ContentType.valueOf(request.getEventType());
+        ContentType eventType = resolveEventType(request.getEventType());
         LocalDate endDate = LocalDate.parse(request.getEndDate());
 
         CalendarEvent event = CalendarEvent.builder()
@@ -61,6 +61,16 @@ public class CalendarService {
     }
 
     @Transactional(readOnly = true)
+    public List<CalendarEventResponse> getAllActiveEvents(String userId) {
+        User user = userRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다: " + userId));
+
+        return calendarEventRepository.findByUserAndIsActive(user, ActiveStatus.Y).stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public List<CalendarEventResponse> getEvents(String userId, int year, int month) {
         User user = userRepository.findByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다: " + userId));
@@ -73,15 +83,31 @@ public class CalendarService {
                 user, startDate, endDate, ActiveStatus.Y);
 
         return events.stream()
-                .map(e -> CalendarEventResponse.builder()
-                        .eventId(e.getEventId())
-                        .userId(e.getUser().getUserId())
-                        .title(e.getTitle())
-                        .eventType(e.getEventType().name())
-                        .endDate(e.getEndDate())
-                        .createdAt(e.getCreatedAt())
-                        .build())
+                .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    private CalendarEventResponse toResponse(CalendarEvent e) {
+        return CalendarEventResponse.builder()
+                .eventId(e.getEventId())
+                .userId(e.getUser().getUserId())
+                .title(e.getTitle())
+                .eventType(e.getEventType().name())
+                .endDate(e.getEndDate())
+                .createdAt(e.getCreatedAt())
+                .build();
+    }
+
+    /** policy / housing / housing_announcement 등 클라이언트 문자열 → ContentType */
+    private ContentType resolveEventType(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return ContentType.policy;
+        }
+        String normalized = raw.trim().toLowerCase();
+        if (normalized.contains("policy")) {
+            return ContentType.policy;
+        }
+        return ContentType.housing;
     }
 
     @Transactional

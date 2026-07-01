@@ -15,12 +15,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-/**
- * 정책 추천 가중치 공식 (코드 단일 소스).
- * DB에는 Top-K 결과만 저장하고, 점수 계산은 항상 이 서비스를 사용한다.
- *
- * @see PolicyRegionService 지역 매칭·감점
- */
 @Service
 public class PolicyScoringService {
 
@@ -81,9 +75,6 @@ public class PolicyScoringService {
         }
     }
 
-    /**
-     * 사용자 프로필 × 정책 속성으로 점수 계산.
-     */
     public double scorePolicy(Policy policy, UserProfileResponse profile, LocalDate today) {
         double score = BASE_SCORE;
 
@@ -92,7 +83,7 @@ public class PolicyScoringService {
         List<String> interests = profile != null && profile.getInterests() != null
                 ? profile.getInterests()
                 : List.of();
-        List<String> regionKeywords = extractRegionKeywords(userRegion);
+        List<String> regionKeywords = policyRegionService.extractUserRegionKeywords(userRegion);
 
         Integer ageStart = policy.getAgeStart();
         Integer ageEnd = policy.getAgeEnd();
@@ -221,8 +212,12 @@ public class PolicyScoringService {
         if (text == null || text.isBlank() || keywords.isEmpty()) {
             return false;
         }
+        String normalized = text.replace(" ", "");
         for (String keyword : keywords) {
-            if (text.contains(keyword)) {
+            if (keyword == null || keyword.length() < 2) {
+                continue;
+            }
+            if (normalized.contains(keyword.replace(" ", ""))) {
                 return true;
             }
         }

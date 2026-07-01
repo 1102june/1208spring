@@ -44,5 +44,16 @@ public class HousingComplexResponse {
     private String heatingType;
     private Boolean hasElevator;
     private String completionDate;
+
+    /** 정제된 표시 필드 */
+    private String depositDisplay;
+    private String monthlyRentDisplay;
+    private String rentSummary;
+    private String supplyAreaDisplay;
+    private String distanceDisplay;
+    private String summaryLine;
+    private Boolean hasCoordinates;
+    private Boolean mapDisplayable;
+    private Integer activeNoticeCount;
 }
 

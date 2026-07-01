@@ -33,4 +33,13 @@ public interface HousingComplexRepository extends JpaRepository<HousingComplex, 
     // Find complexes with names containing the provided text
     @Query("SELECT c FROM HousingComplex c WHERE c.hsmpNm LIKE %:name%")
     List<HousingComplex> findByHsmpNmContaining(@Param("name") String name);
+
+    @Query("SELECT c FROM HousingComplex c WHERE c.latitude IS NULL OR c.longitude IS NULL")
+    List<HousingComplex> findNeedingGeocode(org.springframework.data.domain.Pageable pageable);
+
+    @Query("SELECT COUNT(c) FROM HousingComplex c WHERE c.latitude IS NULL OR c.longitude IS NULL")
+    long countNeedingGeocode();
+
+    @Query("SELECT COUNT(c) FROM HousingComplex c WHERE c.latitude IS NOT NULL AND c.longitude IS NOT NULL")
+    long countWithCoordinates();
 }

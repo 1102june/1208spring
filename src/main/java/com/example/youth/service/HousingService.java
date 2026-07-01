@@ -13,6 +13,7 @@ import com.example.youth.repository.BookmarkRepository;
 import com.example.youth.repository.HousingComplexRepository;
 import com.example.youth.repository.HousingNoticeRepository;
 import com.example.youth.repository.HousingRepository;
+import com.example.youth.util.HousingFormatUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
@@ -64,6 +65,9 @@ public class HousingService {
 
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private HousingGeocodeService housingGeocodeService;
 
     // true이면 신청기간(날짜) 필터를 무시하고 DB의 모든 공고를 노출 (비공개 테스트용)
     @Value("${app.housing.show-all:false}")
@@ -488,8 +492,8 @@ public class HousingService {
         HousingComplexResponse response = builder.build();
         response.setName(complex.getHsmpNm());
         response.setOrganization(complex.getInsttNm());
-        response.setAddress(complex.getRnAdres());
-        response.setRegion(buildComplexRegionLabel(complex));
+        response.setAddress(resolveComplexAddress(complex));
+        response.setRegion(HousingFormatUtils.formatRegionLabel(complex));
         response.setHousingType(complex.getHouseTyNm() != null && !complex.getHouseTyNm().isBlank()
                 ? complex.getHouseTyNm()
                 : complex.getSuplyTyNm());
@@ -499,14 +503,32 @@ public class HousingService {
             response.setCompletionDate(complex.getCompleteDate().toLocalDate().toString());
         }
 
+        boolean hasCoordinates = complex.getLatitude() != null && complex.getLongitude() != null;
+        response.setHasCoordinates(hasCoordinates);
+        response.setMapDisplayable(hasCoordinates || (response.getAddress() != null && !response.getAddress().isBlank()));
+        response.setDepositDisplay(HousingFormatUtils.formatMoneyWon(complex.getDeposit()));
+        response.setMonthlyRentDisplay(HousingFormatUtils.formatMoneyWon(complex.getMonthlyRent()));
+        response.setRentSummary(HousingFormatUtils.formatDepositMonthly(complex.getDeposit(), complex.getMonthlyRent()));
+        response.setSupplyAreaDisplay(HousingFormatUtils.formatSupplyArea(complex.getSupplyArea()));
+        response.setSummaryLine(HousingFormatUtils.buildComplexSummary(complex));
+
+        if (complex.getComplexId() != null) {
+            int noticeCount = housingNoticeRepository.findByHsmpSn(complex.getComplexId()).size();
+            if (noticeCount == 0 && complex.getHsmpNm() != null) {
+                noticeCount = housingNoticeRepository.findByHsmpNm(complex.getHsmpNm()).size();
+            }
+            response.setActiveNoticeCount(noticeCount);
+        }
+
         // 사용자 위치가 제공된 경우 거리 계산
-        if (userLat != null && userLon != null && 
+        if (userLat != null && userLon != null &&
             response.getLatitude() != null && response.getLongitude() != null) {
             double distance = DistanceCalculator.calculateDistance(
-                    userLat, userLon, 
+                    userLat, userLon,
                     response.getLatitude(), response.getLongitude()
             );
             response.setDistanceFromUser(distance);
+            response.setDistanceDisplay(HousingFormatUtils.formatDistanceMeters(distance));
         }
         
         return response;
@@ -539,7 +561,7 @@ public class HousingService {
             }
         }
         
-        return HousingNoticeResponse.builder()
+        HousingNoticeResponse response = HousingNoticeResponse.builder()
                 .noticeId(notice.getNoticeId())
                 .hsmpSn(notice.getHsmpSn())
                 .hsmpNm(notice.getHsmpNm())
@@ -557,7 +579,32 @@ public class HousingService {
                 .panSs(notice.getPanSs())
                 .isBookmarked(isBookmarked)
                 .matchedComplex(matchedComplex)
+                .title(HousingFormatUtils.buildNoticeTitle(notice))
+                .region(HousingFormatUtils.normalizeNoticeRegion(notice.getCnpCdNm()))
+                .status(HousingFormatUtils.resolveNoticeStatus(notice.getApplicationEnd()))
+                .recruitmentPeriodDisplay(HousingFormatUtils.formatApplicationPeriod(
+                        notice.getApplicationStart(), notice.getApplicationEnd()))
+                .hasApplicationLink(notice.getDtlUrl() != null && !notice.getDtlUrl().isBlank())
                 .build();
+        enrichNoticeDisplayFields(response);
+        return response;
+    }
+
+    private void enrichNoticeDisplayFields(HousingNoticeResponse response) {
+        if (response == null) {
+            return;
+        }
+        HousingComplexResponse matched = response.getMatchedComplex();
+        if (matched != null) {
+            response.setAddress(matched.getAddress());
+            response.setSupplyAreaDisplay(matched.getSupplyAreaDisplay());
+            response.setDepositDisplay(matched.getDepositDisplay());
+            response.setMonthlyRentDisplay(matched.getMonthlyRentDisplay());
+            response.setRentSummary(matched.getRentSummary());
+        }
+        if (response.getRentSummary() == null || response.getRentSummary().isBlank()) {
+            response.setRentSummary("보증금 · 월세 정보는 상세 공고에서 확인");
+        }
     }
     
     /**
@@ -570,14 +617,19 @@ public class HousingService {
             Integer radius, 
             Integer limit) {
         
-        List<HousingComplex> allComplexes = housingComplexRepository.findAll();
-        
         int searchRadius = radius != null ? radius : 5000; // 기본 5km
-        int maxResults = limit != null ? limit : 50;
-        
+        int maxResults = limit != null ? limit : 200;
+
+        List<HousingComplex> sourceList = resolveComplexCandidates(userId, userLat, userLon, searchRadius);
+
+        // 응답에 포함될 후보 중 좌표 없는 단지는 제한적으로 지오코딩 (DB 점진 보강)
+        housingGeocodeService.geocodeOnDemandForResponse(
+                sourceList.stream().limit(maxResults).toList());
+
         // 사용자 위치가 있는 경우: 반경 + 거리순 추천
         if (userLat != null && userLon != null) {
-            return allComplexes.stream()
+            return sourceList.stream()
+                    .filter(this::hasMappableLocation)
                     .filter(complex -> {
                         if (complex.getLatitude() == null || complex.getLongitude() == null) {
                             return false;
@@ -600,12 +652,125 @@ public class HousingService {
                     .limit(maxResults)
                     .collect(Collectors.toList());
         }
-        
-        // 위치 정보가 없을 때: 전체 목록 반환
-        return allComplexes.stream()
+
+        // 위치 정보가 없을 때: 프로필 지역 단지 우선 + 좌표/주소 있는 항목만
+        return sourceList.stream()
+                .filter(this::hasMappableLocation)
+                .sorted(complexCoordinateFirst()
+                        .thenComparing(c -> c.getHsmpNm() != null ? c.getHsmpNm() : ""))
                 .map(complex -> convertComplexToResponse(complex, userId, null, null))
                 .limit(maxResults)
                 .collect(Collectors.toList());
+    }
+
+    private String loadProfileRegion(String userId) {
+        try {
+            UserProfileResponse profile = userService.getUserProfile(userId);
+            if (profile != null) {
+                return profile.getRegion();
+            }
+        } catch (Exception e) {
+            System.err.println("프로필 지역 조회 실패: " + e.getMessage());
+        }
+        return null;
+    }
+
+    private List<HousingComplex> resolveComplexCandidates(
+            String userId,
+            Double userLat,
+            Double userLon,
+            int searchRadius) {
+        if (userLat != null && userLon != null) {
+            return housingComplexRepository.findAll();
+        }
+
+        String profileRegion = null;
+        try {
+            UserProfileResponse profile = userService.getUserProfile(userId);
+            if (profile != null) {
+                profileRegion = profile.getRegion();
+            }
+        } catch (Exception e) {
+            System.err.println("단지 조회: 프로필 조회 실패 (전체 목록 사용): " + e.getMessage());
+        }
+
+        final String userRegion = profileRegion;
+        if (userRegion != null && !userRegion.isBlank()) {
+            String provinceKeyword = extractProvinceKeyword(userRegion);
+            if (provinceKeyword != null && !provinceKeyword.isBlank()) {
+                List<HousingComplex> regional = housingComplexRepository.findByRegion(provinceKeyword);
+                if (!regional.isEmpty()) {
+                    System.out.println("HousingService: 프로필 지역(" + userRegion + ") 단지 "
+                            + regional.size() + "건 후보");
+                    return regional;
+                }
+            }
+        }
+
+        return housingComplexRepository.findAll();
+    }
+
+    private String extractProvinceKeyword(String profileRegion) {
+        if (profileRegion == null || profileRegion.isBlank()) {
+            return null;
+        }
+        String first = profileRegion.trim().split("\\s+")[0];
+        return first
+                .replace("특별자치시", "")
+                .replace("특별자치도", "")
+                .replace("특별시", "")
+                .replace("광역시", "")
+                .replace("도", "")
+                .trim();
+    }
+
+    private boolean hasMappableLocation(HousingComplex complex) {
+        if (complex == null) {
+            return false;
+        }
+        if (complex.getLatitude() != null && complex.getLongitude() != null) {
+            return true;
+        }
+        if (complex.getRnAdres() != null && !complex.getRnAdres().isBlank()) {
+            return true;
+        }
+        return complex.getBrtcNm() != null && !complex.getBrtcNm().isBlank();
+    }
+
+    private Comparator<HousingComplex> complexCoordinateFirst() {
+        return (c1, c2) -> {
+            boolean c1HasCoords = c1.getLatitude() != null && c1.getLongitude() != null;
+            boolean c2HasCoords = c2.getLatitude() != null && c2.getLongitude() != null;
+            if (c1HasCoords != c2HasCoords) {
+                return c1HasCoords ? -1 : 1;
+            }
+            String n1 = c1.getHsmpNm() != null ? c1.getHsmpNm() : "";
+            String n2 = c2.getHsmpNm() != null ? c2.getHsmpNm() : "";
+            return n1.compareTo(n2);
+        };
+    }
+
+    private String resolveComplexAddress(HousingComplex complex) {
+        if (complex.getRnAdres() != null && !complex.getRnAdres().isBlank()) {
+            return complex.getRnAdres();
+        }
+        StringBuilder sb = new StringBuilder();
+        if (complex.getBrtcNm() != null && !complex.getBrtcNm().isBlank()) {
+            sb.append(complex.getBrtcNm());
+        }
+        if (complex.getSignguNm() != null && !complex.getSignguNm().isBlank()) {
+            if (sb.length() > 0) {
+                sb.append(" ");
+            }
+            sb.append(complex.getSignguNm());
+        }
+        if (complex.getHsmpNm() != null && !complex.getHsmpNm().isBlank()) {
+            if (sb.length() > 0) {
+                sb.append(" ");
+            }
+            sb.append(complex.getHsmpNm());
+        }
+        return sb.toString();
     }
     
     /**
@@ -622,11 +787,15 @@ public class HousingService {
                     : housingNoticeRepository.findActiveNotices(new java.util.Date());
             System.out.println("HousingService: 활성 공고문 개수 = " + (activeNotices != null ? activeNotices.size() : 0));
             
-            int maxResults = limit != null ? limit : 50;
+            int maxResults = limit != null ? limit : 100;
+
+            String profileRegion = loadProfileRegion(userId);
+            final String userRegion = profileRegion;
             
             // 신청 기간이 현재 날짜 기준으로 남아있는 공고만 사용 (마감일 null=상시 포함, show-all이면 전체)
             LocalDate today = LocalDate.now();
             List<HousingNoticeResponse> result = activeNotices.stream()
+                .filter(notice -> HousingFormatUtils.matchesProfileRegion(userRegion, notice))
                 .filter(notice -> {
                     if (showAllHousing) {
                         return true;

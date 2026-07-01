@@ -1486,8 +1486,10 @@ public class HousingSyncService {
         existing.setBassMtRntchrg(newData.getBassMtRntchrg());
         existing.setMonthlyRent(newData.getMonthlyRent());
         existing.setBassCnvrsGtnLmt(newData.getBassCnvrsGtnLmt());
-        existing.setLatitude(newData.getLatitude());
-        existing.setLongitude(newData.getLongitude());
+        if (newData.getLatitude() != null && newData.getLongitude() != null) {
+            existing.setLatitude(newData.getLatitude());
+            existing.setLongitude(newData.getLongitude());
+        }
     }
 
     /**

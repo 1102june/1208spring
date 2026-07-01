@@ -30,5 +30,17 @@ public class HousingNoticeResponse {
     private Boolean isBookmarked; // 북마크 여부
     // 매칭된 단지정보 (있는 경우)
     private HousingComplexResponse matchedComplex;
+
+    /** 정제된 표시 필드 */
+    private String title;
+    private String region;
+    private String status;
+    private String recruitmentPeriodDisplay;
+    private String depositDisplay;
+    private String monthlyRentDisplay;
+    private String rentSummary;
+    private String address;
+    private String supplyAreaDisplay;
+    private Boolean hasApplicationLink;
 }
 
